@@ -1,6 +1,5 @@
 import { centerContent } from '@lib/ui/css/centerContent'
 import { round } from '@lib/ui/css/round'
-import { sameDimensions } from '@lib/ui/css/sameDimensions'
 import { toSizeUnit } from '@lib/ui/css/toSizeUnit'
 import { PositionAbsolutelyByCenter } from '@lib/ui/layout/PositionAbsolutelyByCenter'
 import { KindProp, ChildrenProp } from '@lib/ui/props'
@@ -15,29 +14,38 @@ import styled, { css } from 'styled-components'
 
 import { totalFrets } from '../../guitar/config'
 
-import { fretboardConfig } from './config'
+import { useResponsiveFretboardConfig } from './ResponsiveFretboardConfig'
 import { useVisibleFrets } from './state/visibleFrets'
 import { getStringPosition } from './utils/getStringPosition'
 
 export type NoteKind = 'regular' | 'primary' | 'blue'
 
 export type NoteProps = Partial<KindProp<NoteKind> & ChildrenProp> &
-  NotePosition
+  NotePosition & {
+    isRoot?: boolean
+  }
 
-const Container = styled.div<KindProp<NoteKind>>`
+const Container = styled.div<KindProp<NoteKind> & { $isRoot?: boolean }>`
   ${round}
-  ${sameDimensions(fretboardConfig.noteSize)}
 
   border: 1px solid transparent;
   ${centerContent};
   font-weight: 600;
 
-  ${({ kind, theme: { colors } }) => {
+  ${({ kind, $isRoot, theme: { colors } }) => {
     const color = match(kind, {
       regular: () => colors.getLabelColor(3),
       primary: () => colors.success,
       blue: () => colors.getLabelColor(7),
     })
+
+    if ($isRoot && kind === 'primary') {
+      return css`
+        background: ${color.toCssValue()};
+        border: 2px solid #e53935;
+        color: #e53935;
+      `
+    }
 
     if (kind === 'primary') {
       return css`
@@ -61,8 +69,10 @@ export const Note = ({
   fret,
   kind = 'regular',
   children,
+  isRoot,
 }: NoteProps) => {
   const visibleFrets = useVisibleFrets()
+  const config = useResponsiveFretboardConfig()
 
   const top = toPercents(getStringPosition(string))
 
@@ -70,15 +80,19 @@ export const Note = ({
 
   const left = `calc(${
     fret === -1
-      ? toSizeUnit(-fretboardConfig.nutWidth)
+      ? toSizeUnit(-config.nutWidth)
       : toPercents(
           getFretPosition({ totalFrets, visibleFrets, index: fret }).end,
         )
-  } - ${toSizeUnit(fretboardConfig.noteSize / 2 + fretboardConfig.noteFretOffset)})`
+  } - ${toSizeUnit(config.noteSize / 2 + config.noteFretOffset)})`
 
   return (
     <PositionAbsolutelyByCenter top={top} left={left}>
-      <Container kind={kind}>
+      <Container
+        kind={kind}
+        $isRoot={isRoot}
+        style={{ width: config.noteSize, height: config.noteSize }}
+      >
         {children ?? chromaticNotesNames[value]}
       </Container>
     </PositionAbsolutelyByCenter>

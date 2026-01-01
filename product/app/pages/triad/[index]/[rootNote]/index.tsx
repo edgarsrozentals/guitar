@@ -37,6 +37,7 @@ export const getStaticProps: GetStaticProps = async ({ params }) => {
       value: {
         rootNote: fromUriNote(rootNote),
         index: Number(index),
+        tonality: 'major', // Default to major for backward compatibility
       },
     },
   }

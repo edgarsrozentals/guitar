@@ -6,7 +6,11 @@ import { getScaleNotes } from '@product/core/scale/getScaleNotes'
 import { getFullScalePattern } from '@product/core/scale/getScalePattern/full'
 import { Scale } from '@product/core/scale/Scale'
 import { scalePatterns } from '@product/core/scale/ScaleType'
-import { getTriadName, triadIntervals } from '@product/core/triads'
+import {
+  ChordType,
+  chordIntervals,
+  getChordName,
+} from '@product/core/triads'
 
 import { Fretboard } from '../guitar/fretboard/Fretboard'
 import { Note } from '../guitar/fretboard/Note'
@@ -14,15 +18,19 @@ import { SectionTitle } from '../ui/SectionTitle'
 
 import { useTriad } from './state/triad'
 
-export const TriadOnMajorScalePattern = ({
-  scalePatternIndex,
-}: {
+type TriadOnScalePatternProps = {
   scalePatternIndex: number
-}) => {
-  const { rootNote, index: triadIndex } = useTriad()
+  chordType: ChordType
+}
+
+export const TriadOnScalePattern = ({
+  scalePatternIndex,
+  chordType,
+}: TriadOnScalePatternProps) => {
+  const { rootNote, index: triadIndex, tonality } = useTriad()
 
   const scale: Scale = {
-    tonality: 'major',
+    tonality,
     rootNote,
     type: 'full',
   }
@@ -35,12 +43,14 @@ export const TriadOnMajorScalePattern = ({
   const scaleNotes = rotateArray(
     getScaleNotes({
       rootNote,
-      pattern: scalePatterns.full[scale.tonality],
+      pattern: scalePatterns.full[tonality],
     }),
     triadIndex,
   )
 
-  const title = `${getTriadName(triadIndex)} on ${getScaleName(scale)} Pattern #${
+  const intervals = chordIntervals[chordType]
+
+  const title = `${getChordName(triadIndex, tonality, chordType)} on ${getScaleName(scale)} Pattern #${
     scalePatternIndex + 1
   }`
 
@@ -52,13 +62,13 @@ export const TriadOnMajorScalePattern = ({
           const scaleDegree =
             scaleNotes.indexOf(getNoteFromPosition({ position })) + 1
 
-          const isTriadNote = triadIntervals.includes(scaleDegree)
+          const isChordNote = intervals.includes(scaleDegree)
 
           return (
             <Note
               key={`${position.string}-${position.fret}`}
               {...position}
-              kind={isTriadNote ? 'primary' : undefined}
+              kind={isChordNote ? 'primary' : undefined}
             >
               {scaleDegree}
             </Note>
@@ -68,3 +78,6 @@ export const TriadOnMajorScalePattern = ({
     </VStack>
   )
 }
+
+// Keep backward compatibility alias
+export const TriadOnMajorScalePattern = TriadOnScalePattern

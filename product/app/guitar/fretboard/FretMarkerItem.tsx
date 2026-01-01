@@ -1,8 +1,6 @@
 import { Match } from '@lib/ui/base/Match'
 import { round } from '@lib/ui/css/round'
-import { sameDimensions } from '@lib/ui/css/sameDimensions'
 import { vStack } from '@lib/ui/css/stack'
-import { verticalPadding } from '@lib/ui/css/verticalPadding'
 import { Center } from '@lib/ui/layout/Center'
 import { PositionAbsolutelyCenterVertically } from '@lib/ui/layout/PositionAbsolutelyCenterVertically'
 import { ValueProp } from '@lib/ui/props'
@@ -15,12 +13,11 @@ import styled from 'styled-components'
 
 import { totalFrets } from '../../guitar/config'
 
-import { fretboardConfig } from './config'
+import { useResponsiveFretboardConfig } from './ResponsiveFretboardConfig'
 import { useVisibleFrets } from './state/visibleFrets'
 
 const Dot = styled.div`
   ${round};
-  ${sameDimensions(fretboardConfig.height * 0.12)};
   background: ${getColor('textShy')};
 `
 
@@ -29,13 +26,16 @@ const DoubleMarkerContainer = styled.div`
     justifyContent: 'space-between',
     fullHeight: true,
   })}
-  ${verticalPadding(fretboardConfig.height * 0.08)};
 `
 
 type FretMarkerItemProps = ValueProp<FretMarker>
 
 export const FretMarkerItem = ({ value }: FretMarkerItemProps) => {
   const visibleFrets = useVisibleFrets()
+  const config = useResponsiveFretboardConfig()
+
+  const dotSize = config.height * 0.12
+  const verticalPad = config.height * 0.08
 
   return (
     <PositionAbsolutelyCenterVertically
@@ -54,13 +54,15 @@ export const FretMarkerItem = ({ value }: FretMarkerItemProps) => {
         value={value.type}
         single={() => (
           <Center>
-            <Dot />
+            <Dot style={{ width: dotSize, height: dotSize }} />
           </Center>
         )}
         double={() => (
-          <DoubleMarkerContainer>
-            <Dot />
-            <Dot />
+          <DoubleMarkerContainer
+            style={{ paddingTop: verticalPad, paddingBottom: verticalPad }}
+          >
+            <Dot style={{ width: dotSize, height: dotSize }} />
+            <Dot style={{ width: dotSize, height: dotSize }} />
           </DoubleMarkerContainer>
         )}
       />

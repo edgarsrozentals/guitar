@@ -29,5 +29,8 @@
     "sync-packages": "syncpack fix-mismatches",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "chord-fingering": "^1.0.2"
   }
 }

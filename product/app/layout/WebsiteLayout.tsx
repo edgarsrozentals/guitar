@@ -22,6 +22,7 @@ import { useEffect, useRef } from 'react'
 import styled from 'styled-components'
 
 import { makeCagedPath } from '../caged/state/caged'
+import { makeChordsPath } from '../chords/state/chords'
 import { ProductLogo } from '../product/ProductLogo'
 import { makeScalePath } from '../scale/state/scale'
 import { makeTriadPath } from '../triad/state/triad'
@@ -38,12 +39,16 @@ const items = [
     href: '/',
   },
   {
+    name: 'Chords',
+    href: makeChordsPath({ rootNote: 0, quality: 'major' }),
+  },
+  {
     name: 'CAGED',
     href: makeCagedPath({ view: 'chord', tonality: 'major' }),
   },
   {
     name: 'Triads',
-    href: makeTriadPath({ rootNote: 10, index: 0 }),
+    href: makeTriadPath({ rootNote: 10, index: 0, tonality: 'major' }),
   },
   {
     name: 'Scales',

@@ -12,17 +12,17 @@ import { useChangeTriad } from '../state/triad'
 import { useTriad } from '../state/triad'
 
 export const ManageTriadIndex = () => {
-  const { index } = useTriad()
+  const { index, tonality } = useTriad()
   const setValue = useChangeTriad()
 
   return (
     <InputContainer>
-      <InputLabel>Triad: {getTriadName(index)}</InputLabel>
+      <InputLabel>Triad: {getTriadName(index, tonality)}</InputLabel>
       <GroupedRadioInput<number>
         value={index}
         onChange={(index) => setValue({ index })}
         options={range(diatonicTriadsNumber)}
-        renderOption={(value) => triadRomanNumerals[value]}
+        renderOption={(value) => triadRomanNumerals[tonality][value]}
       />
     </InputContainer>
   )

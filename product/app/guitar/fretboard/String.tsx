@@ -1,4 +1,3 @@
-import { toSizeUnit } from '@lib/ui/css/toSizeUnit'
 import { PositionAbsolutelyCenterHorizontally } from '@lib/ui/layout/PositionAbsolutelyCenterHorizontally'
 import { IndexProp } from '@lib/ui/props'
 import { getColor } from '@lib/ui/theme/getters'
@@ -7,36 +6,34 @@ import styled, { css } from 'styled-components'
 
 import { stringsThickness } from '../../guitar/config'
 
-import { fretboardConfig } from './config'
 import { useVisibleFrets } from './state/visibleFrets'
 import { getStringPosition } from './utils/getStringPosition'
 
-const Container = styled.div<{ isBassString: boolean; showNut: boolean }>`
-  background: ${({ isBassString }) =>
-    isBassString
+const Container = styled.div<{ $isBassString: boolean }>`
+  background: ${({ $isBassString }) =>
+    $isBassString
       ? css`repeating-linear-gradient(135deg, ${getColor('background')}, ${getColor('background')} 1.5px, ${getColor('textSupporting')} 1.5px, ${getColor('textSupporting')} 3px)`
       : css`
           ${getColor('textSupporting')}
         `};
-  ${({ showNut }) =>
-    showNut
-      ? css`
-          width: calc(100% + ${toSizeUnit(fretboardConfig.nutWidth)});
-          margin-left: ${toSizeUnit(-fretboardConfig.nutWidth)};
-        `
-      : css`
-          width: 100%;
-        `}
   position: relative;
   color: ${getColor('background')};
 `
 
-export const String = ({ index }: IndexProp) => {
+type StringProps = IndexProp & {
+  nutWidth: number
+  thickestStringWidth: number
+}
+
+export const String = ({ index, nutWidth, thickestStringWidth }: StringProps) => {
   const isBassString = index > 2
 
   const visibleFrets = useVisibleFrets()
 
   const showNut = visibleFrets.start < 1
+
+  const width = showNut ? `calc(100% + ${nutWidth}px)` : '100%'
+  const marginLeft = showNut ? -nutWidth : 0
 
   return (
     <PositionAbsolutelyCenterHorizontally
@@ -44,10 +41,11 @@ export const String = ({ index }: IndexProp) => {
       fullWidth
     >
       <Container
-        showNut={showNut}
-        isBassString={isBassString}
+        $isBassString={isBassString}
         style={{
-          height: fretboardConfig.thickestStringWidth * stringsThickness[index],
+          height: thickestStringWidth * stringsThickness[index],
+          width,
+          marginLeft,
         }}
         key={index}
       />

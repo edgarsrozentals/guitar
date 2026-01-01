@@ -13,9 +13,7 @@ export const ManageTriadRootNote = () => {
 
   return (
     <InputContainer>
-      <InputLabel>
-        Major scale root note: {chromaticNotesNames[rootNote]}
-      </InputLabel>
+      <InputLabel>Root note: {chromaticNotesNames[rootNote]}</InputLabel>
       <GroupedRadioInput
         value={chromaticNotesNames[rootNote]}
         onChange={(noteName) => {
