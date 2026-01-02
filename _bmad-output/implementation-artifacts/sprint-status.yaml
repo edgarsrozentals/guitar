@@ -1,0 +1,140 @@
+# Sprint Status - YouTube Chord Player
+# Generated: 2026-01-02
+# Project: guitar-app
+# Tracking System: file-system
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+generated: 2026-01-02
+project: guitar-app
+project_key: youtube-chord-player
+tracking_system: file-system
+story_location: "_bmad-output/implementation-artifacts"
+stories_doc: "_bmad-output/planning-artifacts/epic3-karaoke-lyrics-stories.md"
+
+# Reference Documents
+references:
+  brd: "_bmad-output/planning-artifacts/brd-youtube-chord-player.md"
+  architecture: "_bmad-output/planning-artifacts/architecture-youtube-chord-player.md"
+  epic3_stories: "_bmad-output/planning-artifacts/epic3-karaoke-lyrics-stories.md"
+
+development_status:
+  # EPIC 1: Core Playback - COMPLETED
+  epic-1:
+    name: "Core Playback"
+    status: done
+    notes: "YouTube URL input, chord detection, synchronized playback, position selector, CAGED shapes"
+
+  # EPIC 2: Stems & Practice - COMPLETED (loop deferred)
+  epic-2:
+    name: "Stems & Practice"
+    status: done
+    notes: "Stem separation, stem controls, speed control, chord anticipation. Loop sections deferred."
+
+  # EPIC 3: Karaoke Lyrics - READY FOR DEVELOPMENT
+  epic-3:
+    name: "Karaoke Lyrics"
+    status: in-progress
+    notes: "On-demand lyrics transcription with word-level karaoke sync"
+
+  # EPIC 3 Stories
+  3-1-lyrics-tab-ui-shell:
+    epic: epic-3
+    status: ready-for-dev
+    title: "Lyrics Tab UI Shell"
+    priority: must-have
+    backend_required: false
+    complexity: small
+    description: "Add Lyrics tab with empty/loading/error/loaded states"
+    acceptance_criteria: 15
+
+  3-2-audio-source-selection:
+    epic: epic-3
+    status: ready-for-dev
+    title: "Audio Source Selection"
+    priority: must-have
+    backend_required: false
+    complexity: small
+    description: "Toggle to choose vocals stem vs full audio for transcription"
+    acceptance_criteria: 9
+
+  3-3-lyrics-generation-api:
+    epic: epic-3
+    status: ready-for-dev
+    title: "Lyrics Generation API Integration"
+    priority: must-have
+    backend_required: true
+    complexity: medium
+    description: "Frontend API calls for lyrics generation with polling"
+    acceptance_criteria: 16
+    depends_on:
+      - 3-6-backend-lyrics-endpoint
+
+  3-4-karaoke-display:
+    epic: epic-3
+    status: ready-for-dev
+    title: "Karaoke Lyrics Display with Rabbit Lyrics"
+    priority: must-have
+    backend_required: false
+    complexity: medium
+    description: "Rabbit Lyrics integration for word-level karaoke display"
+    acceptance_criteria: 12
+
+  3-5-playback-sync:
+    epic: epic-3
+    status: ready-for-dev
+    title: "Lyrics Playback Synchronization"
+    priority: must-have
+    backend_required: false
+    complexity: medium
+    description: "Sync lyrics with play/pause/seek/speed changes"
+    acceptance_criteria: 14
+
+  3-6-backend-lyrics-endpoint:
+    epic: epic-3
+    status: ready-for-dev
+    title: "Backend - Lyrics Transcription Endpoint"
+    priority: must-have
+    backend_required: false
+    complexity: medium
+    description: "Python endpoint using lyrics-transcriber + Whisper"
+    acceptance_criteria: 20
+    notes: "Runs locally on Mac M4 with Metal acceleration"
+
+  epic-3-retrospective:
+    epic: epic-3
+    status: optional
+    title: "Epic 3 Retrospective"
+
+# Implementation Recommendations
+implementation_order:
+  option_a_sequential:
+    - 3-6-backend-lyrics-endpoint
+    - 3-1-lyrics-tab-ui-shell
+    - 3-2-audio-source-selection
+    - 3-3-lyrics-generation-api
+    - 3-4-karaoke-display
+    - 3-5-playback-sync
+
+  option_b_parallel:
+    track_a_frontend:
+      - 3-1-lyrics-tab-ui-shell
+      - 3-2-audio-source-selection
+      - 3-4-karaoke-display
+      - 3-5-playback-sync
+    track_b_backend:
+      - 3-6-backend-lyrics-endpoint
+    integration:
+      - 3-3-lyrics-generation-api

@@ -1,4 +1,5 @@
 import { capitalizeFirstLetter } from '@lib/utils/capitalizeFirstLetter'
+
 import { Tonality } from '../tonality'
 
 // Chord types
@@ -43,7 +44,8 @@ export const getChordName = (
   const numeral = triadRomanNumerals[tonality][index]
   const quality = chordQualities[tonality][index]
 
-  const chordTypeSuffix = chordType === 'triad' ? 'Triad' : chordTypeNames[chordType]
+  const chordTypeSuffix =
+    chordType === 'triad' ? 'Triad' : chordTypeNames[chordType]
 
   return [
     numeral,

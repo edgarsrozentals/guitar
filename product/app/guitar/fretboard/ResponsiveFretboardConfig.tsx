@@ -11,26 +11,26 @@ type FretboardConfigValues = {
   thickestStringWidth: number
 }
 
-// Normal size config
+// Normal size config (20% smaller than original)
 const normalConfig: FretboardConfigValues = {
-  height: 240,
-  nutWidth: 20,
+  height: 192,
+  nutWidth: 16,
   stringsOffset: 0.04,
-  noteSize: 36,
-  openNotesSectionWidth: 40, // noteSize + noteFretOffset * 2
+  noteSize: 29,
+  openNotesSectionWidth: 33, // noteSize + noteFretOffset * 2
   noteFretOffset: 2,
-  thickestStringWidth: 8,
+  thickestStringWidth: 6,
 }
 
-// Compact size config for narrow screens
+// Compact size config for narrow screens (20% smaller than original)
 const compactConfig: FretboardConfigValues = {
-  height: 168, // ~30% smaller than normal
-  nutWidth: 14,
+  height: 134,
+  nutWidth: 11,
   stringsOffset: 0.04,
-  noteSize: 24, // smaller notes
-  openNotesSectionWidth: 28,
+  noteSize: 19,
+  openNotesSectionWidth: 23,
   noteFretOffset: 2,
-  thickestStringWidth: 5,
+  thickestStringWidth: 4,
 }
 
 const ResponsiveFretboardConfigContext =

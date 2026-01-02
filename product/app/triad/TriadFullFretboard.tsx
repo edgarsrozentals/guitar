@@ -1,6 +1,6 @@
 import { range } from '@lib/utils/array/range'
-import { intervalRange } from '@lib/utils/interval/intervalRange'
 import { rotateArray } from '@lib/utils/array/rotateArray'
+import { intervalRange } from '@lib/utils/interval/intervalRange'
 import { standardTuning } from '@product/core/guitar/tuning'
 import { chromaticNotesNumber } from '@product/core/note'
 import { getScaleNotes } from '@product/core/scale/getScaleNotes'

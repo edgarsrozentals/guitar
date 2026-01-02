@@ -9,8 +9,26 @@
 
 node_modules
 
+.env
 .envrc
 credentials.json
 *.tsbuildinfo
 
 **/dist/
+
+# Backend
+backend/venv/
+backend/audio/
+backend/__pycache__/
+*.pyc
+
+# Next.js
+.next/
+
+# IDE
+.idea/
+.vscode/
+
+# Temp files
+*.log
+*.tmpbackend/venv/

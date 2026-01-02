@@ -9,6 +9,7 @@ import { TabNavigationItem } from './TabNavigationItem'
 interface TabNavigationProps<T extends string | number | symbol> {
   views: readonly T[]
   getViewName: (view: T) => string
+  renderView?: (view: T) => React.ReactNode // Optional custom render for tab content
   activeView: T
   onSelect: (option: T) => void
   className?: string
@@ -25,6 +26,7 @@ const Container = styled(HStack)`
 export function TabNavigation<T extends string | number | symbol>({
   views,
   getViewName,
+  renderView,
   activeView,
   onSelect,
   className,
@@ -43,7 +45,7 @@ export function TabNavigation<T extends string | number | symbol>({
             onSelect={() => onSelect(view)}
             key={name}
           >
-            {name}
+            {renderView ? renderView(view) : name}
           </TabNavigationItem>
         )
       })}

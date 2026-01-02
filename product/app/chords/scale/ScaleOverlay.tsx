@@ -1,11 +1,11 @@
 import { range } from '@lib/utils/array/range'
 import { intervalRange } from '@lib/utils/interval/intervalRange'
+import { standardTuning } from '@product/core/guitar/tuning'
 import { chromaticNotesNames, chromaticNotesNumber } from '@product/core/note'
+import { getBlueNote } from '@product/core/scale/blues/getBlueNote'
 import { getScaleNotes } from '@product/core/scale/getScaleNotes'
 import { ScalePattern } from '@product/core/scale/ScalePattern'
 import { ScaleType } from '@product/core/scale/ScaleType'
-import { getBlueNote } from '@product/core/scale/blues/getBlueNote'
-import { standardTuning } from '@product/core/guitar/tuning'
 import { Tonality } from '@product/core/tonality'
 
 import { defaultVisibleFrets } from '../../guitar/fretboard/Fretboard'
@@ -45,9 +45,7 @@ export const ScaleOverlay = ({
       // For open string (fret -1), use the open note directly
       // For fretted notes, add fret + 1 to the open note
       const note =
-        fret === -1
-          ? openNote
-          : (openNote + fret + 1) % chromaticNotesNumber
+        fret === -1 ? openNote : (openNote + fret + 1) % chromaticNotesNumber
 
       // Check if this note is in the scale
       if (scaleNotes.includes(note)) {

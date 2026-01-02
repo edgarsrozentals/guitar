@@ -21,7 +21,11 @@ export const useChangeChords = () => {
 
   return useCallback(
     (params: Partial<ChordsState>) => {
-      push(makeChordsPath({ ...value, ...params }))
+      // Preserve query parameters (like ?v=VIDEO_ID) when navigating
+      const basePath = makeChordsPath({ ...value, ...params })
+      const currentSearch =
+        typeof window !== 'undefined' ? window.location.search : ''
+      push(basePath + currentSearch)
     },
     [push, value],
   )

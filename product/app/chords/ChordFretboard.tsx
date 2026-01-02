@@ -1,11 +1,11 @@
-import { useMemo } from 'react'
-
 import {
   ChordShapeType,
   findShapeForPosition,
   shapeToFretPositions,
 } from '@product/core/chords/cagedShapes'
 import { ChordQuality } from '@product/core/chords/chordTypes'
+import { getNoteFromPosition } from '@product/core/note/getNoteFromPosition'
+import { useMemo } from 'react'
 
 import { defaultVisibleFrets, Fretboard } from '../guitar/fretboard/Fretboard'
 import { Note } from '../guitar/fretboard/Note'
@@ -66,8 +66,11 @@ export const ChordFretboard = ({
     // Skip notes beyond visible frets
     if (componentFret > defaultVisibleFrets.end) return
 
-    // Check if this is the root note position
-    const isRoot = stringIndex === shape.rootString && fret === rootFret
+    // Check if this note is a root note (same pitch class as chord root)
+    const noteAtPosition = getNoteFromPosition({
+      position: { string: stringIndex, fret: componentFret },
+    })
+    const isRoot = noteAtPosition === rootNote
 
     elements.push(
       <Note

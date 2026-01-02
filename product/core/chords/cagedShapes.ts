@@ -4,7 +4,17 @@
 
 export type CAGEDShapeName = 'C' | 'A' | 'G' | 'E' | 'D'
 
-export type ChordShapeType = 'major' | 'minor' | '7' | 'maj7' | 'min7' | 'dim' | 'dim7' | '9' | 'maj9' | 'min9'
+export type ChordShapeType =
+  | 'major'
+  | 'minor'
+  | '7'
+  | 'maj7'
+  | 'min7'
+  | 'dim'
+  | 'dim7'
+  | '9'
+  | 'maj9'
+  | 'min9'
 
 // Fret offsets for each string [6th, 5th, 4th, 3rd, 2nd, 1st]
 // null means muted, number is offset from root fret position
@@ -73,7 +83,7 @@ export const minorShapes: ShapeDefinition[] = [
   {
     name: 'G',
     rootString: 5,
-    offsets: [3, 1, 0, 0, 1, 3], // Gm shape - minor 3rd on B and A strings
+    offsets: [3, 3, 0, 0, 1, 3], // Gm shape - B string plays D (5th), A string plays Bb (b3)
     rootOffset: 3,
   },
 ]
@@ -163,7 +173,7 @@ export const min7Shapes: ShapeDefinition[] = [
   {
     name: 'G',
     rootString: 5,
-    offsets: [1, 1, 0, 0, 1, 3], // Gm7 shape - flat 3rd + b7
+    offsets: [1, 3, 0, 0, 1, 3], // Gm7 shape - high E plays F (b7), B string plays D (5th), A string plays Bb (b3)
     rootOffset: 3,
   },
 ]
@@ -331,7 +341,11 @@ export const findShapeForPosition = (
   const rootPositions = getRootPositionsForNote(noteIndex)
 
   // Find shapes where the root fret is close to the requested position
-  const candidates: { shape: ShapeDefinition; rootFret: number; distance: number }[] = []
+  const candidates: {
+    shape: ShapeDefinition
+    rootFret: number
+    distance: number
+  }[] = []
 
   for (const shape of shapes) {
     const baseRootFret = rootPositions[shape.name]
@@ -386,7 +400,13 @@ export const findShapeForPosition = (
   candidates.sort((a, b) => {
     if (a.distance !== b.distance) return a.distance - b.distance
     // Prefer E > A > D > G > C for playability
-    const priority: Record<CAGEDShapeName, number> = { E: 0, A: 1, D: 2, G: 3, C: 4 }
+    const priority: Record<CAGEDShapeName, number> = {
+      E: 0,
+      A: 1,
+      D: 2,
+      G: 3,
+      C: 4,
+    }
     return priority[a.shape.name] - priority[b.shape.name]
   })
 

@@ -25,14 +25,25 @@ export type NoteProps = Partial<KindProp<NoteKind> & ChildrenProp> &
     isRoot?: boolean
   }
 
-const Container = styled.div<KindProp<NoteKind> & { $isRoot?: boolean }>`
+const Container = styled.div<
+  KindProp<NoteKind> & { $isRoot?: boolean; $isOpen?: boolean }
+>`
   ${round}
 
   border: 1px solid transparent;
   ${centerContent};
   font-weight: 600;
 
-  ${({ kind, $isRoot, theme: { colors } }) => {
+  ${({ kind, $isRoot, $isOpen, theme: { colors } }) => {
+    // Open string notes (fret -1) are always gray
+    if ($isOpen) {
+      return css`
+        border: 1px solid #88888880;
+        background: #88888820;
+        color: #888888;
+      `
+    }
+
     const color = match(kind, {
       regular: () => colors.getLabelColor(3),
       primary: () => colors.success,
@@ -86,11 +97,14 @@ export const Note = ({
         )
   } - ${toSizeUnit(config.noteSize / 2 + config.noteFretOffset)})`
 
+  const isOpen = fret === -1
+
   return (
     <PositionAbsolutelyByCenter top={top} left={left}>
       <Container
         kind={kind}
         $isRoot={isRoot}
+        $isOpen={isOpen}
         style={{ width: config.noteSize, height: config.noteSize }}
       >
         {children ?? chromaticNotesNames[value]}

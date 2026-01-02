@@ -92,6 +92,9 @@ const baseConfig = [
       '**/public/sw.js',
       '**/public/workbox-*.js',
       '**/.react-email/**',
+      '**/backend/venv/**',
+      '**/_bmad/**',
+      '**/next-env.d.ts',
     ],
   },
 ]

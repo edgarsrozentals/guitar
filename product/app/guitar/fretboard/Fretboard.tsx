@@ -1,7 +1,5 @@
 import { hStack } from '@lib/ui/css/stack'
-import { toSizeUnit } from '@lib/ui/css/toSizeUnit'
 import { ChildrenProp } from '@lib/ui/props'
-import { getColor } from '@lib/ui/theme/getters'
 import { range } from '@lib/utils/array/range'
 import { Interval } from '@lib/utils/interval/Interval'
 import { intervalRange } from '@lib/utils/interval/intervalRange'
@@ -26,7 +24,7 @@ const OpenNotes = styled.div``
 const Frets = styled.div`
   position: relative;
   flex: 1;
-  background: ${getColor('foreground')};
+  background: #1a1a1a;
 `
 
 type FretboardProps = {

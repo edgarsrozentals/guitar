@@ -1,12 +1,18 @@
 import { VStack, HStack } from '@lib/ui/css/stack'
-import { getColor } from '@lib/ui/theme/getters'
 import { ChildrenProp } from '@lib/ui/props'
+import { getColor } from '@lib/ui/theme/getters'
 import styled from 'styled-components'
 
 const Container = styled.div`
   background: ${getColor('foreground')};
   border-radius: 12px;
   padding: 16px 20px;
+`
+
+const TitleRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 `
 
 const Title = styled.h3`
@@ -20,13 +26,21 @@ const Title = styled.h3`
 
 type ControlGroupProps = ChildrenProp & {
   title: string
+  action?: React.ReactNode
 }
 
-export const ControlGroup = ({ title, children }: ControlGroupProps) => {
+export const ControlGroup = ({
+  title,
+  children,
+  action,
+}: ControlGroupProps) => {
   return (
     <Container>
       <VStack gap={12}>
-        <Title>{title}</Title>
+        <TitleRow>
+          <Title>{title}</Title>
+          {action}
+        </TitleRow>
         <HStack gap={24} wrap="wrap">
           {children}
         </HStack>

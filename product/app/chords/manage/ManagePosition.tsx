@@ -13,6 +13,7 @@ import { useResponsiveFretboardConfig } from '../../guitar/fretboard/ResponsiveF
 const SliderWrapper = styled.div`
   display: flex;
   align-items: center;
+  user-select: none;
 `
 
 const OpenSection = styled.div`
@@ -28,8 +29,6 @@ const NutSection = styled.div`
 const FretsSection = styled.div`
   flex: 1;
   padding: 8px 12px;
-  ${borderRadius.m};
-  border: 2px solid ${getColor('mistExtra')};
 `
 
 const SliderTrack = styled.div`
@@ -37,7 +36,7 @@ const SliderTrack = styled.div`
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: ${getColor('mist')};
+  background: ${getColor('mistExtra')};
   cursor: pointer;
 `
 
@@ -71,7 +70,7 @@ const FretMarkersContainer = styled.div`
 const FretNumber = styled.button<{ $isActive: boolean }>`
   position: absolute;
   transform: translateX(-50%);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   padding: 2px 4px;
   border: none;
@@ -88,7 +87,7 @@ const FretNumber = styled.button<{ $isActive: boolean }>`
 `
 
 const OpenFretNumber = styled.button<{ $isActive: boolean }>`
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   padding: 2px 4px;
   border: none;
@@ -117,9 +116,15 @@ const getLogPosition = (fret: number): number => {
 
 // Convert a position (0-1) back to the nearest fret
 const positionToFret = (position: number, maxFret: number): number => {
+  // Check if position is close enough to 0 (open string)
+  const fret1Pos = getLogPosition(1)
+  if (position < fret1Pos / 2) {
+    return 0
+  }
+
   // Find the fret whose position is closest to the given position
   let closestFret = 1
-  let closestDistance = Math.abs(getLogPosition(1) - position)
+  let closestDistance = Math.abs(fret1Pos - position)
 
   for (let fret = 2; fret <= maxFret; fret++) {
     const fretPos = getLogPosition(fret)
@@ -168,11 +173,13 @@ export const ManagePosition = ({
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      e.preventDefault() // Prevent text selection while dragging
       isDragging.current = true
       handlePositionFromEvent(e.clientX)
 
       const handleMouseMove = (e: MouseEvent) => {
         if (isDragging.current) {
+          e.preventDefault()
           handlePositionFromEvent(e.clientX)
         }
       }
