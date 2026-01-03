@@ -111,3 +111,78 @@ product/              # Application code (import via @product/*)
 - `product/core/chords/chordTypes.ts` - Chord quality intervals
 - `product/app/guitar/fretboard/ResponsiveFretboardConfig.tsx` - Responsive sizing
 - `product/app/chords/ChordsPage.tsx` - Main chord page
+
+## YouTube Chord Detection System
+
+### Overview
+
+The `/chords/youtube` page allows users to load YouTube videos, detect chords using multiple libraries, and visualize them on a timeline synchronized with the video.
+
+### Multi-Library Chord Detection
+
+Three chord detection libraries are supported for A/B testing accuracy:
+
+| Library | Location | Chord Types | Notes |
+|---------|----------|-------------|-------|
+| **Essentia** | Local Python | major, minor, 7th, dim, aug | Frame-based or beat-synchronous |
+| **Madmom** | Cloud Run | major, minor, 7th, dim, aug | Deep learning based |
+| **BTC** | Cloud Run | major, minor only (25 classes) | Transformer model |
+
+### Key Files
+
+- `product/app/chords/youtube/YouTubeChordPlayer.tsx` - Main component
+- `product/app/chords/youtube/ChordTimeline.tsx` - Timeline visualization
+- `backend/src/server.ts` - Express API server
+- `backend/src/detect_chords.py` - Essentia chord detection (Python)
+
+### Beat Detection Features
+
+Two toggles in the **Chords** tab improve chord timing accuracy:
+
+#### 1. Snap Chords to Beats (Post-processing)
+- **Toggle:** "Snap chords to beats"
+- **Effect:** Quantizes chord change times to nearest detected beat
+- **Implementation:** Client-side post-processing via `quantizeChordsToBeats()` function
+- **No re-analysis required** - works instantly on existing chord data
+
+#### 2. Beat-Synchronous Detection (Re-analysis)
+- **Toggle:** "Beat-sync detection"
+- **Effect:** Averages HPCP (Harmonic Pitch Class Profile) over each beat period before chord detection
+- **Implementation:**
+  - Frontend passes `useBeatSyncDetection: true` in POST body
+  - Backend passes `mode='beat_sync'` to Python script
+  - `detect_chords.py` uses `detect_chords_beat_sync()` function
+- **Requires re-analysis** - click Analyze button after enabling
+
+### Backing Track Analysis
+
+- **Toggle:** "Use backing track for analysis" (Chords tab)
+- **Requires:** Stem separation via LALAL.ai (Audio tab → "Separate Stems")
+- **Effect:** Uses `stems/{videoId}/backing.mp3` instead of full audio
+- **Purpose:** Removes vocals for cleaner chord detection
+
+### API Endpoints
+
+```
+POST /api/songs/:videoId/analyze
+Body: { library?: string, useBackingTrack?: boolean, useBeatSyncDetection?: boolean }
+
+GET /api/songs/:videoId/chords?library=essentia|madmom|btc
+
+DELETE /api/songs/:videoId/chords/:library
+```
+
+### Data Storage
+
+Chord analysis results stored in `backend/songs-metadata.json`:
+```json
+{
+  "videoId": "abc123",
+  "chordsByLibrary": {
+    "essentia": [{ "time": 0, "chord": { "root": "A", "quality": "minor" } }],
+    "madmom": [...],
+    "btc": [...]
+  },
+  "tempo": { "bpm": 120, "beats": [0.5, 1.0, 1.5, ...] },
+  "key": { "root": "A", "scale": "minor" }
+}

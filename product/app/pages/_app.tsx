@@ -5,6 +5,7 @@ import { Inter } from 'next/font/google'
 import { ReactNode } from 'react'
 
 import { WebsiteLayout } from '../layout/WebsiteLayout'
+import { AuthProvider } from '../state/auth/AuthProvider'
 
 import type { AppProps } from 'next/app'
 
@@ -24,7 +25,9 @@ function MyApp({ Component, pageProps }: MyAppProps) {
   return (
     <DarkLightThemeProvider value={'dark'}>
       <GlobalStyle fontFamily={inter.style.fontFamily} />
-      <WebsiteLayout>{component}</WebsiteLayout>
+      <AuthProvider>
+        <WebsiteLayout>{component}</WebsiteLayout>
+      </AuthProvider>
     </DarkLightThemeProvider>
   )
 }

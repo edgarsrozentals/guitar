@@ -67,7 +67,7 @@ const ToolbarButton = styled.button<{ $variant?: 'danger' }>`
 
 const MIN_FONT_SIZE = 12
 const MAX_FONT_SIZE = 24
-const DEFAULT_FONT_SIZE = 14
+const DEFAULT_FONT_SIZE = MAX_FONT_SIZE
 
 export function LyricsPanel({
   lyricsState,

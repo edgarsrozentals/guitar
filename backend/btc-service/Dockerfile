@@ -23,9 +23,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY *.py ./
+COPY utils/ ./utils/
 
-# Create directory for model weights
-RUN mkdir -p /app/models
+# Copy config and pretrained weights
+COPY run_config.yaml ./
+COPY btc_model.pt ./
 
 # Cloud Run expects the app to listen on PORT env variable
 ENV PORT=8080

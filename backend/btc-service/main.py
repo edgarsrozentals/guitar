@@ -1,249 +1,249 @@
 """
-BTC (Bi-directional Transformer for Chord Recognition) Service
-
-A Flask API that uses a transformer-based model for high-accuracy chord detection.
-Based on the paper: "A Bi-Directional Transformer for Musical Chord Recognition"
-Designed to run on Google Cloud Run.
+BTC (Bi-directional Transformer) Chord Detection Service
+Uses pretrained weights from the original BTC-ISMIR19 paper.
 """
 
 import os
 import base64
 import tempfile
-import json
-from flask import Flask, request, jsonify
+import warnings
 import numpy as np
+import torch
+import librosa
+from flask import Flask, request, jsonify
+
+warnings.filterwarnings('ignore')
 
 app = Flask(__name__)
 
-# Lazy load model to avoid import errors during container startup
-_model_loaded = False
-_btc_model = None
-_device = None
+# Global model and config
+model = None
+mean = None
+std = None
+config = None
+device = torch.device("cpu")
 
-# Chord vocabulary (25 chord classes from BTC paper)
-CHORD_LABELS = [
-    'N',  # No chord
-    'C:maj', 'C:min', 'C#:maj', 'C#:min',
-    'D:maj', 'D:min', 'D#:maj', 'D#:min',
-    'E:maj', 'E:min',
-    'F:maj', 'F:min', 'F#:maj', 'F#:min',
-    'G:maj', 'G:min', 'G#:maj', 'G#:min',
-    'A:maj', 'A:min', 'A#:maj', 'A#:min',
-    'B:maj', 'B:min',
-]
+# Chord labels (25 classes: major/minor for each note + N for no chord)
+idx2chord = ['C', 'C:min', 'C#', 'C#:min', 'D', 'D:min', 'D#', 'D#:min', 'E', 'E:min', 'F', 'F:min', 'F#',
+             'F#:min', 'G', 'G:min', 'G#', 'G#:min', 'A', 'A:min', 'A#', 'A#:min', 'B', 'B:min', 'N']
 
 
 def load_model():
-    """Load the BTC model for chord recognition."""
-    global _model_loaded, _btc_model, _device
-    if _model_loaded:
-        return
+    """Load the BTC model and pretrained weights."""
+    global model, mean, std, config
 
-    import torch
-    from btc_model import BTCModel
+    from utils.hparams import HParams
+    from btc_model import BTC_model
 
-    _device = torch.device('cpu')
+    # Load config
+    config_path = os.path.join(os.path.dirname(__file__), 'run_config.yaml')
+    config = HParams.load(config_path)
 
-    # Initialize model
-    _btc_model = BTCModel(
-        n_chords=len(CHORD_LABELS),
-        d_model=256,
-        n_heads=8,
-        n_layers=6,
-        d_ff=1024,
-        dropout=0.1
-    )
-    _btc_model.to(_device)
-    _btc_model.eval()
+    # Create model
+    model = BTC_model(config=config.model).to(device)
 
-    # Load pretrained weights if available
-    weights_path = '/app/models/btc_weights.pt'
-    if os.path.exists(weights_path):
-        print(f"Loading pretrained weights from {weights_path}")
-        _btc_model.load_state_dict(torch.load(weights_path, map_location=_device))
+    # Load pretrained weights
+    model_path = os.path.join(os.path.dirname(__file__), 'btc_model.pt')
+    if os.path.exists(model_path):
+        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+        mean = checkpoint['mean']
+        std = checkpoint['std']
+        model.load_state_dict(checkpoint['model'])
+        model.eval()
+        print(f"Loaded pretrained BTC model from {model_path}")
+        return True
     else:
-        print("Warning: No pretrained weights found. Using randomly initialized model.")
-        print("For accurate predictions, download weights to /app/models/btc_weights.pt")
-
-    _model_loaded = True
-    print("BTC model loaded successfully")
+        print(f"Warning: No pretrained weights found at {model_path}")
+        return False
 
 
-def extract_cqt_features(audio_path: str, sr: int = 22050, hop_length: int = 512):
-    """
-    Extract Constant-Q Transform features from audio.
-    Returns CQT spectrogram suitable for BTC model input.
-    """
-    import librosa
-    import torch
+def audio_file_to_features(audio_file, config):
+    """Extract CQT features from audio file (from original BTC code)."""
+    original_wav, sr = librosa.load(audio_file, sr=config.mp3['song_hz'], mono=True)
+    currunt_sec_hz = 0
+    feature = None
 
-    # Load audio
-    y, sr = librosa.load(audio_path, sr=sr, mono=True)
+    while len(original_wav) > currunt_sec_hz + config.mp3['song_hz'] * config.mp3['inst_len']:
+        start_idx = int(currunt_sec_hz)
+        end_idx = int(currunt_sec_hz + config.mp3['song_hz'] * config.mp3['inst_len'])
+        tmp = librosa.cqt(original_wav[start_idx:end_idx], sr=sr,
+                         n_bins=config.feature['n_bins'],
+                         bins_per_octave=config.feature['bins_per_octave'],
+                         hop_length=config.feature['hop_length'])
+        if feature is None:
+            feature = tmp
+        else:
+            feature = np.concatenate((feature, tmp), axis=1)
+        currunt_sec_hz = end_idx
 
-    # Compute CQT (similar to original BTC paper)
-    cqt = librosa.cqt(
-        y,
-        sr=sr,
-        hop_length=hop_length,
-        n_bins=84,  # 7 octaves
-        bins_per_octave=12
-    )
+    # Process remaining audio
+    if len(original_wav) > currunt_sec_hz:
+        tmp = librosa.cqt(original_wav[currunt_sec_hz:], sr=sr,
+                         n_bins=config.feature['n_bins'],
+                         bins_per_octave=config.feature['bins_per_octave'],
+                         hop_length=config.feature['hop_length'])
+        if feature is None:
+            feature = tmp
+        else:
+            feature = np.concatenate((feature, tmp), axis=1)
 
-    # Convert to magnitude and log scale
-    cqt_mag = np.abs(cqt)
-    cqt_db = librosa.amplitude_to_db(cqt_mag, ref=np.max)
+    feature = np.log(np.abs(feature) + 1e-6)
+    feature_per_second = config.mp3['inst_len'] / config.model['timestep']
+    song_length_second = len(original_wav) / config.mp3['song_hz']
 
-    # Normalize
-    cqt_db = (cqt_db - cqt_db.mean()) / (cqt_db.std() + 1e-8)
-
-    # Transpose to (time, freq) and convert to tensor
-    features = torch.FloatTensor(cqt_db.T)
-
-    # Calculate timestamps
-    n_frames = features.shape[0]
-    times = librosa.frames_to_time(
-        np.arange(n_frames),
-        sr=sr,
-        hop_length=hop_length
-    )
-
-    return features, times
+    return feature, feature_per_second, song_length_second
 
 
-def parse_chord_label(label: str) -> dict:
-    """Parse a chord label into root and quality."""
-    if label == 'N' or label == '':
-        return {'root': 'N', 'quality': 'none'}
+def predict_chords(audio_path):
+    """Run chord prediction on audio file."""
+    global model, mean, std, config
 
-    parts = label.split(':')
-    root = parts[0] if parts else 'N'
-    quality = parts[1] if len(parts) > 1 else 'major'
-
-    # Normalize quality names
-    quality_map = {
-        'maj': 'major',
-        'min': 'minor',
-    }
-    normalized_quality = quality_map.get(quality, quality)
-
-    # Normalize root note (keep sharps as-is)
-    return {'root': root, 'quality': normalized_quality}
-
-
-def detect_chords(audio_path: str) -> list:
-    """
-    Detect chords using BTC model.
-    Returns list of chord events with timestamps.
-    """
-    import torch
-
-    load_model()
+    if model is None:
+        raise RuntimeError("Model not loaded")
 
     # Extract features
-    features, times = extract_cqt_features(audio_path)
+    feature, feature_per_second, song_length_second = audio_file_to_features(audio_path, config)
 
-    # Add batch dimension
-    features = features.unsqueeze(0).to(_device)  # (1, time, freq)
+    # Transpose and normalize
+    feature = feature.T
+    feature = (feature - mean) / std
+    time_unit = feature_per_second
+    n_timestep = config.model['timestep']
+
+    # Pad to multiple of timestep
+    num_pad = n_timestep - (feature.shape[0] % n_timestep)
+    if num_pad < n_timestep:
+        feature = np.pad(feature, ((0, num_pad), (0, 0)), mode="constant", constant_values=0)
+    num_instance = feature.shape[0] // n_timestep
 
     # Run inference
+    chords = []
+    start_time = 0.0
+    prev_chord = None
+
     with torch.no_grad():
-        logits = _btc_model(features)  # (1, time, n_chords)
-        predictions = torch.argmax(logits, dim=-1).squeeze(0)  # (time,)
+        model.eval()
+        feature_tensor = torch.tensor(feature, dtype=torch.float32).unsqueeze(0).to(device)
 
-    # Convert predictions to chord events
-    chord_events = []
-    prev_chord_idx = -1
-    min_duration = 0.3  # Minimum chord duration
+        for t in range(num_instance):
+            # Get chunk for this timestep
+            chunk = feature_tensor[:, n_timestep * t:n_timestep * (t + 1), :]
 
-    for i, (time, chord_idx) in enumerate(zip(times, predictions.cpu().numpy())):
-        chord_idx = int(chord_idx)
+            # Run through model
+            self_attn_output, _ = model.self_attn_layers(chunk)
+            prediction, _ = model.output_layer(self_attn_output)
+            prediction = prediction.squeeze()
 
-        # Skip if same as previous chord
-        if chord_idx == prev_chord_idx:
-            continue
+            for i in range(n_timestep):
+                current_time = time_unit * (n_timestep * t + i)
 
-        # Skip 'N' (no chord)
-        if chord_idx == 0:
-            prev_chord_idx = chord_idx
-            continue
+                # Skip beyond song length
+                if current_time > song_length_second:
+                    break
 
-        # Check minimum duration from previous chord
-        if chord_events and (time - chord_events[-1]['time']) < min_duration:
-            continue
+                chord_idx = prediction[i].item()
 
-        chord_label = CHORD_LABELS[chord_idx]
-        chord = parse_chord_label(chord_label)
+                if prev_chord is None:
+                    prev_chord = chord_idx
+                    start_time = current_time
+                    continue
 
-        chord_events.append({
-            'time': float(time),
-            'chord': chord
-        })
+                if chord_idx != prev_chord:
+                    # Record the previous chord
+                    chord_label = idx2chord[prev_chord]
+                    if chord_label != 'N':  # Skip "no chord"
+                        chords.append({
+                            'time': start_time,
+                            'end_time': current_time,
+                            'chord': parse_chord_label(chord_label)
+                        })
+                    start_time = current_time
+                    prev_chord = chord_idx
 
-        prev_chord_idx = chord_idx
+        # Add final chord
+        if prev_chord is not None:
+            chord_label = idx2chord[prev_chord]
+            if chord_label != 'N':
+                chords.append({
+                    'time': start_time,
+                    'end_time': song_length_second,
+                    'chord': parse_chord_label(chord_label)
+                })
 
-    return chord_events
+    return chords, song_length_second
+
+
+def parse_chord_label(label):
+    """Convert BTC chord label to our format."""
+    if label == 'N':
+        return {'root': 'N', 'quality': 'none'}
+
+    if ':min' in label:
+        root = label.replace(':min', '')
+        quality = 'minor'
+    else:
+        root = label
+        quality = 'major'
+
+    # Normalize root note names (sharps to flats for consistency)
+    root_map = {
+        'C#': 'Db', 'D#': 'Eb', 'F#': 'Gb', 'G#': 'Ab', 'A#': 'Bb'
+    }
+    root = root_map.get(root, root)
+
+    return {'root': root, 'quality': quality}
 
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint for Cloud Run."""
-    return jsonify({'status': 'ok', 'service': 'btc-chord-detection'})
+    """Health check endpoint."""
+    return jsonify({
+        'status': 'ok',
+        'service': 'btc-chord-detection',
+        'model_loaded': model is not None
+    })
 
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
-    """
-    Analyze audio for chord detection.
-
-    Expects JSON body:
-    {
-        "audio_data": "base64 encoded audio file",
-        "filename": "optional filename with extension"
-    }
-
-    Returns:
-    {
-        "chords": [{"time": 0.0, "chord": {"root": "C", "quality": "major"}}, ...]
-    }
-    """
+    """Analyze audio for chord detection."""
     try:
         data = request.get_json()
-        if not data or 'audio_data' not in data:
-            return jsonify({'error': 'Missing audio_data in request'}), 400
 
-        audio_base64 = data['audio_data']
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        if 'audio_data' not in data:
+            return jsonify({'error': 'audio_data field required'}), 400
+
+        # Decode base64 audio
+        audio_bytes = base64.b64decode(data['audio_data'])
         filename = data.get('filename', 'audio.mp3')
 
-        # Decode audio data
-        try:
-            audio_bytes = base64.b64decode(audio_base64)
-        except Exception as e:
-            return jsonify({'error': f'Invalid base64 audio data: {str(e)}'}), 400
-
-        # Write to temp file for processing
-        suffix = os.path.splitext(filename)[1] or '.mp3'
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(audio_bytes)
-            tmp_path = tmp.name
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1], delete=False) as f:
+            f.write(audio_bytes)
+            temp_path = f.name
 
         try:
-            # Detect chords
-            chords = detect_chords(tmp_path)
+            # Run prediction
+            chords, duration = predict_chords(temp_path)
 
             return jsonify({
                 'chords': chords,
+                'duration': duration,
                 'library': 'btc',
                 'library_info': {
                     'name': 'BTC (Bi-directional Transformer)',
                     'accuracy': '~90%',
                     'method': 'Transformer + CQT'
-                }
+                },
+                'num_chords': len(chords)
             })
-
         finally:
-            # Cleanup temp file
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
 
     except Exception as e:
         import traceback
@@ -251,6 +251,11 @@ def analyze():
         return jsonify({'error': str(e)}), 500
 
 
+# Load model at startup
+print("Loading BTC model...")
+load_model()
+print("BTC service ready")
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)

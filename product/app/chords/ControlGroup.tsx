@@ -5,8 +5,8 @@ import styled from 'styled-components'
 
 const Container = styled.div`
   background: ${getColor('foreground')};
-  border-radius: 12px;
-  padding: 16px 20px;
+  border-radius: 8px;
+  padding: 12px 16px;
 `
 
 const TitleRow = styled.div`
@@ -16,7 +16,7 @@ const TitleRow = styled.div`
 `
 
 const Title = styled.h3`
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   color: ${getColor('textSupporting')};
   margin: 0;
@@ -36,12 +36,12 @@ export const ControlGroup = ({
 }: ControlGroupProps) => {
   return (
     <Container>
-      <VStack gap={12}>
+      <VStack gap={8}>
         <TitleRow>
           <Title>{title}</Title>
           {action}
         </TitleRow>
-        <HStack gap={24} wrap="wrap">
+        <HStack gap={16} wrap="wrap">
           {children}
         </HStack>
       </VStack>

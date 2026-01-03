@@ -20,6 +20,10 @@ import {
 } from './scale/ManageScaleOverlay'
 import { ScaleOverlay } from './scale/ScaleOverlay'
 import { ChordsProvider, ChordsState } from './state/chords'
+import {
+  FretboardSettingsProvider,
+  useFretboardSettings,
+} from './state/fretboardSettings'
 import { YouTubeChordPlayer } from './youtube'
 
 // Map note names to numbers (A=0, A#=1, B=2, etc.)
@@ -89,42 +93,75 @@ export const ChordsPage = ({ value }: ValueProp<ChordsState>) => {
   return (
     <ResponsiveFretboardConfigProvider>
       <ChordsProvider value={value}>
-        <PageContainer>
-          <VStack gap={24}>
-            {/* Scale and Chord controls at top */}
-            <ControlGroup title="Scale">
-              <ManageScaleOverlay
-                value={scaleSettings}
-                onChange={setScaleSettings}
-              />
-            </ControlGroup>
-            <ControlGroup title="Chord">
-              <ManageChordRoot scaleSettings={scaleSettings} />
-              <ManageChordQuality />
-            </ControlGroup>
-
-            {/* Video player with chord timeline */}
-            <YouTubeChordPlayer onKeyDetected={handleKeyDetected} />
-
-            {/* Fretboard directly under video */}
-            <ChordsPageTitle />
-            <FretboardContainer>
-              <VStack gap={16}>
-                <ManagePosition
-                  value={position}
-                  onChange={setPosition}
-                  min={0}
-                  max={14}
-                />
-                <ChordFretboard
-                  position={position}
-                  scaleOverlay={scaleOverlay}
-                />
-              </VStack>
-            </FretboardContainer>
-          </VStack>
-        </PageContainer>
+        <FretboardSettingsProvider>
+          <ChordsPageContent
+            position={position}
+            setPosition={setPosition}
+            scaleSettings={scaleSettings}
+            setScaleSettings={setScaleSettings}
+            scaleOverlay={scaleOverlay}
+            handleKeyDetected={handleKeyDetected}
+          />
+        </FretboardSettingsProvider>
       </ChordsProvider>
     </ResponsiveFretboardConfigProvider>
+  )
+}
+
+// Separate component to access fretboard settings context
+const ChordsPageContent = ({
+  position,
+  setPosition,
+  scaleSettings,
+  setScaleSettings,
+  scaleOverlay,
+  handleKeyDetected,
+}: {
+  position: number
+  setPosition: (p: number) => void
+  scaleSettings: ScaleOverlaySettings
+  setScaleSettings: (s: ScaleOverlaySettings) => void
+  scaleOverlay: React.ReactNode
+  handleKeyDetected: (key: { root: string; scale: 'major' | 'minor' }) => void
+}) => {
+  const { settings } = useFretboardSettings()
+
+  return (
+    <PageContainer>
+      <VStack gap={24}>
+        {/* Scale controls at top */}
+        <ControlGroup title="Scale">
+          <ManageScaleOverlay
+            value={scaleSettings}
+            onChange={setScaleSettings}
+          />
+        </ControlGroup>
+
+        {/* Video player with chord timeline */}
+        <YouTubeChordPlayer onKeyDetected={handleKeyDetected} />
+
+        {/* Chord controls below song section */}
+        <ControlGroup title="Chord">
+          <ChordsPageTitle />
+          <ManageChordRoot scaleSettings={scaleSettings} />
+          <ManageChordQuality />
+        </ControlGroup>
+
+        {/* Fretboard directly under video */}
+        <FretboardContainer>
+          <VStack gap={16}>
+            {!settings.showAllPositions && (
+              <ManagePosition
+                value={position}
+                onChange={setPosition}
+                min={0}
+                max={14}
+              />
+            )}
+            <ChordFretboard position={position} scaleOverlay={scaleOverlay} />
+          </VStack>
+        </FretboardContainer>
+      </VStack>
+    </PageContainer>
   )
 }

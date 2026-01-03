@@ -19,7 +19,7 @@ export const ProductLogo = () => {
         <Icon />
       </IconWrapper>
       <Text size={16} color="contrast" weight="500">
-        Pentafret
+        GuitarApp
       </Text>
     </HStack>
   )

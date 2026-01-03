@@ -153,6 +153,7 @@ type TempoInfo = {
   bpm: number
   confidence: number
   beatCount: number
+  beats?: number[] // Array of beat timestamps in seconds
 }
 
 type AudioAnalysis = {
@@ -212,14 +213,18 @@ async function getVideoInfo(
 }
 
 // Analyze audio using Python Essentia script (chords, key, tempo)
-function analyzeAudio(audioPath: string): Promise<AudioAnalysis | null> {
+function analyzeAudio(
+  audioPath: string,
+  useBeatSyncDetection: boolean = false,
+): Promise<AudioAnalysis | null> {
   return new Promise((resolve) => {
     const scriptPath = path.join(__dirname, 'detect_chords.py')
     const venvPython = path.join(__dirname, '..', 'venv', 'bin', 'python')
 
-    console.log(`Running audio analysis on: ${audioPath}`)
+    const mode = useBeatSyncDetection ? 'beat_sync' : 'standard'
+    console.log(`Running audio analysis on: ${audioPath} (mode: ${mode})`)
 
-    const python = spawn(venvPython, [scriptPath, audioPath])
+    const python = spawn(venvPython, [scriptPath, audioPath, mode])
 
     let stdout = ''
     let stderr = ''
@@ -622,6 +627,7 @@ app.get('/api/songs/:videoId/chords', (req, res) => {
 // Analyze with a specific library
 app.post('/api/songs/:videoId/analyze/:library', async (req, res) => {
   const { videoId, library } = req.params
+  const { useBackingTrack, useBeatSyncDetection } = req.body || {}
 
   if (!['essentia', 'madmom', 'btc'].includes(library)) {
     return res.status(400).json({
@@ -635,7 +641,26 @@ app.post('/api/songs/:videoId/analyze/:library', async (req, res) => {
     return res.status(404).json({ error: 'Song not found' })
   }
 
-  const audioPath = path.join(AUDIO_DIR, `${videoId}.mp3`)
+  // Determine which audio file to use
+  let audioPath: string
+  let audioSource: 'full' | 'backing' = 'full'
+
+  if (useBackingTrack) {
+    const backingPath = path.join(STEMS_DIR, videoId, 'backing.mp3')
+    if (fs.existsSync(backingPath)) {
+      audioPath = backingPath
+      audioSource = 'backing'
+      console.log(`[Chords] Using backing track for ${library} analysis`)
+    } else {
+      console.log(
+        `[Chords] Backing track requested but not found, using full audio`,
+      )
+      audioPath = path.join(AUDIO_DIR, `${videoId}.mp3`)
+    }
+  } else {
+    audioPath = path.join(AUDIO_DIR, `${videoId}.mp3`)
+  }
+
   if (!fs.existsSync(audioPath)) {
     return res.status(400).json({
       error: 'Audio file not found',
@@ -668,7 +693,7 @@ app.post('/api/songs/:videoId/analyze/:library', async (req, res) => {
 
   if (library === 'essentia') {
     // Run local Essentia analysis
-    runEssentiaAnalysis(videoId, audioPath, progressKey)
+    runEssentiaAnalysis(videoId, audioPath, progressKey, useBeatSyncDetection)
   } else if (library === 'madmom') {
     // Run Madmom analysis (via Cloud Run)
     runMadmomAnalysis(videoId, audioPath, progressKey)
@@ -680,6 +705,7 @@ app.post('/api/songs/:videoId/analyze/:library', async (req, res) => {
   res.json({
     status: 'started',
     message: `Started ${library} analysis`,
+    audioSource,
   })
 })
 
@@ -701,11 +727,59 @@ app.get('/api/songs/:videoId/analyze/:library/progress', (req, res) => {
   res.json(progress)
 })
 
+// Delete chord analysis for a specific library
+app.delete('/api/songs/:videoId/chords/:library', (req, res) => {
+  const { videoId, library } = req.params
+
+  if (!['essentia', 'madmom', 'btc'].includes(library)) {
+    return res.status(400).json({
+      error: 'Invalid library',
+      validLibraries: Object.keys(CHORD_LIBRARY_INFO),
+    })
+  }
+
+  const song = songCache.get(videoId)
+  if (!song) {
+    return res.status(404).json({ error: 'Song not found' })
+  }
+
+  // Delete chords for this library
+  if (song.chordsByLibrary?.[library as ChordLibrary]) {
+    delete song.chordsByLibrary[library as ChordLibrary]
+  }
+
+  // Remove from analyzedWith array
+  if (song.analyzedWith) {
+    song.analyzedWith = song.analyzedWith.filter((l) => l !== library)
+  }
+
+  // If essentia, also clear default chords
+  if (library === 'essentia') {
+    song.chords = []
+  }
+
+  // Clear analysis progress
+  const progressKey = `${videoId}:${library}`
+  chordAnalysisProgress.delete(progressKey)
+
+  // Persist changes
+  saveSongsMetadata()
+
+  console.log(`Deleted ${library} chord analysis for ${videoId}`)
+
+  res.json({
+    success: true,
+    message: `Deleted ${library} chord analysis`,
+    analyzedWith: song.analyzedWith,
+  })
+})
+
 // Run Essentia analysis in background
 async function runEssentiaAnalysis(
   videoId: string,
   audioPath: string,
   progressKey: string,
+  useBeatSyncDetection: boolean = false,
 ) {
   try {
     chordAnalysisProgress.set(progressKey, {
@@ -713,7 +787,7 @@ async function runEssentiaAnalysis(
       status: 'processing',
     })
 
-    const analysis = await analyzeAudio(audioPath)
+    const analysis = await analyzeAudio(audioPath, useBeatSyncDetection)
 
     if (analysis) {
       const song = songCache.get(videoId)
@@ -1603,15 +1677,28 @@ app.use('/stems', express.static(STEMS_DIR))
 // Serve lyrics files
 app.use('/lyrics', express.static(LYRICS_DIR))
 
-app.listen(PORT, () => {
-  console.log(`Backend server running at http://localhost:${PORT}`)
-  console.log(`Audio files directory: ${AUDIO_DIR}`)
-  console.log(`Stems files directory: ${STEMS_DIR}`)
-  console.log(`Lyrics files directory: ${LYRICS_DIR}`)
-  console.log(
-    `LALAL.ai API: ${lalalClient ? 'Configured' : 'Not configured (set LALAL_API_KEY)'}`,
-  )
-  console.log(
-    `AssemblyAI API: ${assemblyClient ? 'Configured' : 'Not configured (set ASSEMBLYAI_API_KEY)'}`,
-  )
-})
+// Only start the server if this file is run directly (not imported for testing)
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Backend server running at http://localhost:${PORT}`)
+    console.log(`Audio files directory: ${AUDIO_DIR}`)
+    console.log(`Stems files directory: ${STEMS_DIR}`)
+    console.log(`Lyrics files directory: ${LYRICS_DIR}`)
+    console.log(
+      `LALAL.ai API: ${lalalClient ? 'Configured' : 'Not configured (set LALAL_API_KEY)'}`,
+    )
+    console.log(
+      `AssemblyAI API: ${assemblyClient ? 'Configured' : 'Not configured (set ASSEMBLYAI_API_KEY)'}`,
+    )
+  })
+}
+
+// Export for testing
+export {
+  app,
+  songCache,
+  saveSongsMetadata,
+  loadSongsMetadata,
+  SONGS_METADATA_FILE,
+  chordAnalysisProgress,
+}

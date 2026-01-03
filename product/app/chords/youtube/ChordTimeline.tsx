@@ -26,6 +26,9 @@ type ChordTimelineProps = {
   onToggle?: () => void // Callback to toggle enabled state
   isLoading?: boolean // Whether analysis is in progress
   loadingProgress?: number // Progress percentage during loading
+  beats?: number[] // Array of beat timestamps in seconds
+  showBeats?: boolean // Whether to show beat markers
+  onDelete?: () => void // Callback to delete/regenerate this timeline's analysis
 }
 
 const Container = styled.div`
@@ -229,6 +232,59 @@ const UpcomingLabel = styled.div`
   border-radius: 4px;
 `
 
+const BeatMarkersContainer = styled.div<{ $offset: number }>`
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+  transform: translateX(${({ $offset }) => $offset}px);
+  transition: transform 0.1s linear;
+`
+
+const BeatMarker = styled.div<{ $position: number; $isPast: boolean }>`
+  position: absolute;
+  left: ${({ $position }) => $position}px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: ${({ $isPast }) =>
+    $isPast ? 'rgba(128, 128, 128, 0.15)' : 'rgba(100, 149, 237, 0.4)'};
+  opacity: ${({ $isPast }) => ($isPast ? 0.5 : 0.8)};
+`
+
+// Reusing same styling as DeleteIconButton in YouTubeChordPlayer
+const DeleteIconButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  color: ${getColor('alert')};
+  border: 1px solid ${getColor('alert')};
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+
+  &:hover {
+    background: ${getColor('alert')};
+    color: ${getColor('background')};
+  }
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+`
+
 export function ChordTimeline({
   chords,
   currentTime,
@@ -241,6 +297,9 @@ export function ChordTimeline({
   onToggle,
   isLoading,
   loadingProgress,
+  beats,
+  showBeats = true,
+  onDelete,
 }: ChordTimelineProps) {
   const pixelsPerSecond = 60 // How many pixels per second of music
   const markerPosition = 80 // Position of the current time marker
@@ -329,6 +388,17 @@ export function ChordTimeline({
         {!enabled && <DisabledOverlay />}
         <TimelineContainer>
           <CurrentMarker />
+          {showBeats && beats && beats.length > 0 && (
+            <BeatMarkersContainer $offset={offset}>
+              {beats.map((beatTime, index) => (
+                <BeatMarker
+                  key={`beat-${index}`}
+                  $position={beatTime * pixelsPerSecond}
+                  $isPast={beatTime < currentTime}
+                />
+              ))}
+            </BeatMarkersContainer>
+          )}
           <TimelineTrack $offset={offset}>
             {visibleChords.map((item, index) => (
               <ChordBlock
@@ -349,6 +419,30 @@ export function ChordTimeline({
           <UpcomingLabel>upcoming →</UpcomingLabel>
         </TimelineContainer>
       </TimelineWrapper>
+      {onDelete && chords.length > 0 && (
+        <DeleteIconButton
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          title="Delete and regenerate"
+          disabled={isLoading}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <line x1="10" y1="11" x2="10" y2="17"></line>
+            <line x1="14" y1="11" x2="14" y2="17"></line>
+          </svg>
+        </DeleteIconButton>
+      )}
     </Container>
   )
 }

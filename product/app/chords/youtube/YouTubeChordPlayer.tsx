@@ -2,10 +2,18 @@
 
 import { HStack, VStack } from '@lib/ui/css/stack'
 import { getColor } from '@lib/ui/theme/getters'
+import { CAGEDShapeName } from '@product/core/chords/cagedShapes'
 import { ChordQuality } from '@product/core/chords/chordTypes'
 import { useState, useCallback, useRef, useEffect } from 'react'
 import styled from 'styled-components'
 
+import {
+  useSongSettings,
+  type StemType,
+  type ChordLibrary,
+  type MediaTab,
+  ALL_STEM_TYPES,
+} from '../../state/settings/useSongSettings'
 import { ControlGroup } from '../ControlGroup'
 import {
   LyricsPanel,
@@ -13,7 +21,10 @@ import {
   useLyricsSync,
   useLyricsGeneration,
 } from '../lyrics'
-import { useChangeChords } from '../state/chords'
+import { useChangeChords, useSetChordsLive } from '../state/chords'
+import { useFretboardSettings } from '../state/fretboardSettings'
+
+const CAGED_SHAPES: CAGEDShapeName[] = ['C', 'A', 'G', 'E', 'D']
 
 import { ChordTimeline } from './ChordTimeline'
 import { YouTubePlayer } from './YouTubePlayer'
@@ -33,6 +44,33 @@ type ChordEvent = {
   chord: Chord
 }
 
+// Quantize chord change times to nearest beat
+function quantizeChordsToBeats(
+  chords: ChordEvent[],
+  beats: number[],
+): ChordEvent[] {
+  if (!beats.length || !chords.length) return chords
+
+  return chords.map((chord) => {
+    // Find the nearest beat to this chord's time
+    let nearestBeat = beats[0]
+    let minDistance = Math.abs(beats[0] - chord.time)
+
+    for (const beat of beats) {
+      const distance = Math.abs(beat - chord.time)
+      if (distance < minDistance) {
+        minDistance = distance
+        nearestBeat = beat
+      }
+    }
+
+    return {
+      ...chord,
+      time: nearestBeat,
+    }
+  })
+}
+
 type KeyInfo = {
   root: string
   scale: 'major' | 'minor'
@@ -43,6 +81,7 @@ type TempoInfo = {
   bpm: number
   confidence: number
   beatCount: number
+  beats?: number[]
 }
 
 type SongData = {
@@ -80,18 +119,7 @@ type StemProgress = {
   error?: string
 }
 
-type StemType = 'vocals' | 'drum' | 'bass' | 'electric_guitar' | 'piano'
-
-const ALL_STEM_TYPES: StemType[] = [
-  'vocals',
-  'drum',
-  'bass',
-  'electric_guitar',
-  'piano',
-]
-
-// Chord detection library types
-type ChordLibrary = 'essentia' | 'madmom' | 'btc'
+// StemType, ChordLibrary, and ALL_STEM_TYPES imported from useSongSettings
 
 type ChordLibraryInfo = {
   id: ChordLibrary
@@ -124,19 +152,21 @@ const STEM_LABELS: Record<string, string> = {
   backing: 'Backing Track',
 }
 
-type MediaTab = 'audio' | 'chords' | 'stems' | 'lyrics'
+// MediaTab imported from useSongSettings
 
 const mediaTabs: readonly MediaTab[] = [
   'audio',
   'chords',
   'stems',
   'lyrics',
+  'fretboard',
 ] as const
 
 const tabLabels: Record<MediaTab, string> = {
   audio: 'Audio',
   chords: 'Chords',
   stems: 'Stems',
+  fretboard: 'Fretboard',
   lyrics: 'Lyrics',
 }
 
@@ -440,7 +470,8 @@ const TabPanelContainer = styled.div`
   border: 1px solid ${getColor('mist')};
   border-radius: 0 8px 8px 8px;
   padding: 16px;
-  min-height: 150px;
+  height: 280px;
+  overflow-y: auto;
 `
 
 const TabsWrapper = styled.div`
@@ -614,6 +645,145 @@ const StemToggleLabel = styled.span`
   font-weight: 500;
   color: ${getColor('text')};
 `
+
+const FretboardSettingsSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+`
+
+const SettingsGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const SettingsGroupTitle = styled.span`
+  font-size: 12px;
+  font-weight: 600;
+  color: ${getColor('textSupporting')};
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+`
+
+const ShapeTogglesRow = styled.div`
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+`
+
+const ShapeToggle = styled.button<{ $enabled: boolean }>`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid ${getColor('mist')};
+  background: ${({ $enabled }) =>
+    $enabled ? getColor('success') : getColor('background')};
+  color: ${({ $enabled }) =>
+    $enabled ? getColor('background') : getColor('textSupporting')};
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: ${({ $enabled }) =>
+      $enabled ? getColor('success') : getColor('mist')};
+  }
+`
+
+// Fretboard settings tab content
+const FretboardTabContent = () => {
+  const {
+    settings,
+    toggleShape,
+    setShowAllPositions,
+    setHighlightRoots,
+    setColorByShape,
+    setColorByPosition,
+  } = useFretboardSettings()
+
+  // Toggle color by shape (mutually exclusive with position)
+  const handleColorByShapeToggle = () => {
+    if (settings.colorByShape) {
+      setColorByShape(false)
+    } else {
+      setColorByShape(true)
+      setColorByPosition(false) // Turn off position coloring
+    }
+  }
+
+  // Toggle color by position (mutually exclusive with shape)
+  const handleColorByPositionToggle = () => {
+    if (settings.colorByPosition) {
+      setColorByPosition(false)
+    } else {
+      setColorByPosition(true)
+      setColorByShape(false) // Turn off shape coloring
+    }
+  }
+
+  return (
+    <FretboardSettingsSection>
+      <SettingsGroup>
+        <SettingsGroupTitle>CAGED Shapes</SettingsGroupTitle>
+        <ShapeTogglesRow>
+          {CAGED_SHAPES.map((shape) => (
+            <ShapeToggle
+              key={shape}
+              $enabled={settings.enabledShapes.has(shape)}
+              onClick={() => toggleShape(shape)}
+              title={`${settings.enabledShapes.has(shape) ? 'Disable' : 'Enable'} ${shape} shape`}
+            >
+              {shape}
+            </ShapeToggle>
+          ))}
+        </ShapeTogglesRow>
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <SettingsGroupTitle>Display Options</SettingsGroupTitle>
+        <StemToggleRow>
+          <StemToggleSwitch
+            $enabled={settings.showAllPositions}
+            onClick={() => setShowAllPositions(!settings.showAllPositions)}
+          />
+          <StemToggleLabel>
+            Show all positions (ignore position slider)
+          </StemToggleLabel>
+        </StemToggleRow>
+        <StemToggleRow>
+          <StemToggleSwitch
+            $enabled={settings.highlightRoots}
+            onClick={() => setHighlightRoots(!settings.highlightRoots)}
+          />
+          <StemToggleLabel>Highlight root notes</StemToggleLabel>
+        </StemToggleRow>
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <SettingsGroupTitle>Note Coloring</SettingsGroupTitle>
+        <StemToggleRow>
+          <StemToggleSwitch
+            $enabled={settings.colorByShape}
+            onClick={handleColorByShapeToggle}
+          />
+          <StemToggleLabel>Color by CAGED shape</StemToggleLabel>
+        </StemToggleRow>
+        <StemToggleRow>
+          <StemToggleSwitch
+            $enabled={settings.colorByPosition}
+            onClick={handleColorByPositionToggle}
+          />
+          <StemToggleLabel>Color by neck position</StemToggleLabel>
+        </StemToggleRow>
+      </SettingsGroup>
+    </FretboardSettingsSection>
+  )
+}
 
 const StemEstimateColumn = styled.div`
   display: flex;
@@ -1064,39 +1234,43 @@ export function YouTubeChordPlayer({
   const [currentTimeSeconds, setCurrentTimeSeconds] = useState(0)
   const [extractionProgress, setExtractionProgress] =
     useState<ExtractionProgress | null>(null)
-  const [activeTab, setActiveTab] = useState<MediaTab>('audio')
 
-  // Stem separation state
+  // Song settings - persisted per user per song via Supabase
+  const {
+    settings: songSettings,
+    setActiveTab,
+    setSelectedStems,
+    setStemVolumes,
+    setStemMuted,
+    setMasterStemsVolume,
+    setActiveLibrary,
+    setEnabledLibraries,
+    setUseBackingTrack,
+    setSnapToBeats,
+    setUseBeatSyncDetection,
+  } = useSongSettings(videoId)
+
+  // Destructure settings for easier access
+  const {
+    activeTab,
+    selectedStems,
+    stemVolumes,
+    stemMuted,
+    masterStemsVolume,
+    activeLibrary,
+    enabledLibraries,
+    useBackingTrack,
+    snapToBeats,
+    useBeatSyncDetection,
+  } = songSettings
+
+  // Stem separation state (not persisted - depends on backend processing status)
   const [stemProgress, setStemProgress] = useState<StemProgress | null>(null)
-  const [selectedStems, setSelectedStems] = useState<Set<StemType>>(
-    new Set(ALL_STEM_TYPES),
-  )
-  const [stemVolumes, setStemVolumes] = useState<Record<string, number>>({
-    vocals: 1,
-    drum: 1,
-    bass: 1,
-    electric_guitar: 1,
-    piano: 1,
-    backing: 1,
-  })
-  const [stemMuted, setStemMuted] = useState<Record<string, boolean>>({
-    vocals: false,
-    drum: false,
-    bass: false,
-    electric_guitar: false,
-    piano: false,
-    backing: false,
-  })
   const [allStemsMuted, setAllStemsMuted] = useState(false)
-  const [masterStemsVolume, setMasterStemsVolume] = useState(100)
   const stemPollIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Chord library A/B testing state
+  // Chord library A/B testing state (chordsByLibrary is fetched from backend, not persisted)
   const [chordsByLibrary, setChordsByLibrary] = useState<ChordsByLibrary>({})
-  const [enabledLibraries, setEnabledLibraries] = useState<Set<ChordLibrary>>(
-    () => new Set<ChordLibrary>(['essentia']),
-  )
-  const [activeLibrary, setActiveLibrary] = useState<ChordLibrary>('essentia')
   const [analysisProgress, setAnalysisProgress] = useState<
     Record<ChordLibrary, ChordAnalysisProgress>
   >({
@@ -1105,6 +1279,11 @@ export function YouTubeChordPlayer({
     btc: { progress: 0, status: 'not_started' },
   })
   const analysisPollRef = useRef<Record<string, NodeJS.Timeout | null>>({})
+
+  // Check if backing track stem is available (for useBackingTrack toggle)
+  const hasBackingTrack =
+    stemProgress?.status === 'complete' &&
+    stemProgress.stems?.some((s) => s.type === 'backing')
 
   // Lyrics state
   const [lyricsState, setLyricsState] = useState<LyricsState>({
@@ -1149,9 +1328,16 @@ export function YouTubeChordPlayer({
   const isPlayingRef = useRef(false)
   const lastSyncTimeRef = useRef(0)
 
+  // For user interactions (URL navigation)
   const changeChords = useChangeChords()
   const changeChordsRef = useRef(changeChords)
   changeChordsRef.current = changeChords
+
+  // For real-time playback updates (no URL navigation - fast!)
+  const setChordsLive = useSetChordsLive()
+  const setChordsLiveRef = useRef(setChordsLive)
+  setChordsLiveRef.current = setChordsLive
+
   const lastChordRef = useRef<string | null>(null)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -1185,7 +1371,8 @@ export function YouTubeChordPlayer({
     const rootNote = noteNameToNumber[currentChord.root]
     const quality = qualityNameToChordQuality[currentChord.quality] || 'major'
     if (rootNote !== undefined) {
-      changeChordsRef.current({ rootNote, quality })
+      // Use live state update (no URL navigation) for real-time performance
+      setChordsLiveRef.current({ rootNote, quality })
     }
   }, [currentChord])
 
@@ -1330,7 +1517,7 @@ export function YouTubeChordPlayer({
         setStatus('error')
       }
     },
-    [startProgressPolling],
+    [startProgressPolling, setActiveTab],
   )
 
   const handleClear = useCallback(() => {
@@ -1386,17 +1573,18 @@ export function YouTubeChordPlayer({
   }, [])
 
   // Toggle stem selection
-  const handleStemToggle = useCallback((stemType: StemType) => {
-    setSelectedStems((prev) => {
-      const next = new Set(prev)
+  const handleStemToggle = useCallback(
+    (stemType: StemType) => {
+      const next = new Set(selectedStems)
       if (next.has(stemType)) {
         next.delete(stemType)
       } else {
         next.add(stemType)
       }
-      return next
-    })
-  }, [])
+      setSelectedStems(next)
+    },
+    [selectedStems, setSelectedStems],
+  )
 
   // Start stem separation
   const handleSeparateStems = useCallback(async () => {
@@ -1457,14 +1645,20 @@ export function YouTubeChordPlayer({
   }, [videoId, selectedStems, pollStemProgress])
 
   // Handle volume change
-  const handleVolumeChange = useCallback((stemType: string, volume: number) => {
-    setStemVolumes((prev) => ({ ...prev, [stemType]: volume }))
-  }, [])
+  const handleVolumeChange = useCallback(
+    (stemType: string, volume: number) => {
+      setStemVolumes({ ...stemVolumes, [stemType]: volume })
+    },
+    [stemVolumes, setStemVolumes],
+  )
 
   // Handle mute toggle
-  const handleMuteToggle = useCallback((stemType: string) => {
-    setStemMuted((prev) => ({ ...prev, [stemType]: !prev[stemType] }))
-  }, [])
+  const handleMuteToggle = useCallback(
+    (stemType: string) => {
+      setStemMuted({ ...stemMuted, [stemType]: !stemMuted[stemType] })
+    },
+    [stemMuted, setStemMuted],
+  )
 
   // Delete stems and start over
   const handleDeleteStems = useCallback(async () => {
@@ -1489,7 +1683,7 @@ export function YouTubeChordPlayer({
     // Reset stem progress to show selection UI again
     setStemProgress(null)
     setSelectedStems(new Set(ALL_STEM_TYPES))
-  }, [videoId])
+  }, [videoId, setSelectedStems])
 
   // Poll for chord analysis progress
   const pollAnalysisProgress = useCallback(
@@ -1554,6 +1748,13 @@ export function YouTubeChordPlayer({
           `${BACKEND_URL}/api/songs/${videoId}/analyze/${library}`,
           {
             method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              useBackingTrack: useBackingTrack && hasBackingTrack,
+              useBeatSyncDetection,
+            }),
           },
         )
 
@@ -1593,45 +1794,121 @@ export function YouTubeChordPlayer({
         }))
       }
     },
-    [videoId, pollAnalysisProgress],
+    [
+      videoId,
+      pollAnalysisProgress,
+      useBackingTrack,
+      hasBackingTrack,
+      useBeatSyncDetection,
+    ],
   )
 
   // Handle library toggle (checkbox)
   const handleLibraryToggle = useCallback(
     (library: ChordLibrary) => {
-      setEnabledLibraries((prev) => {
-        const next = new Set(prev)
-        if (next.has(library)) {
-          next.delete(library)
-          // If we're disabling the active library, switch to another enabled one
-          if (activeLibrary === library) {
-            const remaining = Array.from(next)
-            if (remaining.length > 0) {
-              setActiveLibrary(remaining[0])
-            }
-          }
-        } else {
-          next.add(library)
-          // If this library hasn't been analyzed yet, trigger analysis
-          if (
-            !chordsByLibrary[library] &&
-            analysisProgress[library]?.status !== 'processing'
-          ) {
-            triggerLibraryAnalysis(library)
+      const next = new Set(enabledLibraries)
+      if (next.has(library)) {
+        next.delete(library)
+        // If we're disabling the active library, switch to another enabled one
+        if (activeLibrary === library) {
+          const remaining = Array.from(next) as ChordLibrary[]
+          if (remaining.length > 0) {
+            setActiveLibrary(remaining[0])
           }
         }
-        return next
-      })
+      } else {
+        next.add(library)
+        // If this library hasn't been analyzed yet, trigger analysis
+        if (
+          !chordsByLibrary[library] &&
+          analysisProgress[library]?.status !== 'processing'
+        ) {
+          triggerLibraryAnalysis(library)
+        }
+      }
+      setEnabledLibraries(next)
     },
-    [activeLibrary, chordsByLibrary, analysisProgress, triggerLibraryAnalysis],
+    [
+      enabledLibraries,
+      activeLibrary,
+      chordsByLibrary,
+      analysisProgress,
+      triggerLibraryAnalysis,
+      setEnabledLibraries,
+      setActiveLibrary,
+    ],
   )
 
   // Handle selecting which library controls the fretboard
-  const handleLibrarySelect = useCallback((library: ChordLibrary) => {
-    setActiveLibrary(library)
-    // Reset lastChordRef to force fretboard update with new library's chord
-    lastChordRef.current = null
-  }, [])
+  const handleLibrarySelect = useCallback(
+    (library: ChordLibrary) => {
+      setActiveLibrary(library)
+      // Reset lastChordRef to force fretboard update with new library's chord
+      lastChordRef.current = null
+    },
+    [setActiveLibrary],
+  )
+
+  // Handle deleting chord analysis for a library (to regenerate)
+  const handleLibraryDelete = useCallback(
+    async (library: ChordLibrary) => {
+      if (!videoId) return
+
+      try {
+        // Call backend to delete persisted chord data
+        const response = await fetch(
+          `${BACKEND_URL}/api/songs/${videoId}/chords/${library}`,
+          { method: 'DELETE' },
+        )
+
+        if (!response.ok) {
+          console.error('Failed to delete chord data:', await response.text())
+        }
+      } catch (error) {
+        console.error('Error deleting chord data:', error)
+      }
+
+      // Clear local chords state
+      setChordsByLibrary((prev) => {
+        const next = { ...prev }
+        delete next[library]
+        return next
+      })
+
+      // Reset analysis progress to not_started (user can re-enable to trigger)
+      setAnalysisProgress((prev) => ({
+        ...prev,
+        [library]: { progress: 0, status: 'not_started' },
+      }))
+
+      // If this was essentia (primary), also clear songData.chords
+      if (library === 'essentia') {
+        setSongData((prev) => (prev ? { ...prev, chords: [] } : prev))
+      }
+
+      // Disable this library (user toggles it back on to re-analyze)
+      const next = new Set(enabledLibraries)
+      next.delete(library)
+      setEnabledLibraries(next)
+
+      // If this was the active library, switch to another enabled one
+      if (activeLibrary === library) {
+        const remaining = Array.from(enabledLibraries).filter(
+          (l) => l !== library,
+        ) as ChordLibrary[]
+        if (remaining.length > 0) {
+          setActiveLibrary(remaining[0])
+        }
+      }
+    },
+    [
+      videoId,
+      activeLibrary,
+      enabledLibraries,
+      setEnabledLibraries,
+      setActiveLibrary,
+    ],
+  )
 
   // Check if vocals stem is available for lyrics generation
   const hasVocalsStemForLyrics =
@@ -1749,7 +2026,7 @@ export function YouTubeChordPlayer({
         setAllStemsMuted(false)
       }
     },
-    [allStemsMuted],
+    [allStemsMuted, setMasterStemsVolume],
   )
 
   // Handle YouTube play state changes
@@ -1894,10 +2171,11 @@ export function YouTubeChordPlayer({
             setCurrentChord(chord)
 
             // Update fretboard directly here instead of waiting for effect
+            // Use live state update (no URL navigation) for real-time performance
             const rootNote = noteNameToNumber[chord.root]
             const quality = qualityNameToChordQuality[chord.quality] || 'major'
             if (rootNote !== undefined) {
-              changeChordsRef.current({ rootNote, quality })
+              setChordsLiveRef.current({ rootNote, quality })
             }
           }
         }
@@ -1930,6 +2208,8 @@ export function YouTubeChordPlayer({
               (k) => chordsByLibrary[k as ChordLibrary]?.length,
             )
           )
+        case 'fretboard':
+          return true // Always ready - it's a settings tab
         default:
           return false
       }
@@ -2143,9 +2423,50 @@ export function YouTubeChordPlayer({
 
         if (activeChords.length === 0) {
           return (
-            <TabPlaceholder>
-              No chords detected yet. Extract audio and wait for chord analysis.
-            </TabPlaceholder>
+            <VStack gap={12}>
+              <StemToggleRow>
+                <StemToggleSwitch
+                  $enabled={!!(useBackingTrack && hasBackingTrack)}
+                  onClick={() => {
+                    if (hasBackingTrack) {
+                      setUseBackingTrack(!useBackingTrack)
+                    }
+                  }}
+                  style={{
+                    opacity: hasBackingTrack ? 1 : 0.4,
+                    cursor: hasBackingTrack ? 'pointer' : 'not-allowed',
+                  }}
+                />
+                <StemToggleLabel style={{ opacity: hasBackingTrack ? 1 : 0.5 }}>
+                  Use backing track for analysis
+                  {!hasBackingTrack && ' (separate stems first)'}
+                </StemToggleLabel>
+              </StemToggleRow>
+              <StemToggleRow>
+                <StemToggleSwitch
+                  $enabled={snapToBeats}
+                  onClick={() => setSnapToBeats(!snapToBeats)}
+                  disabled
+                  style={{ opacity: 0.4, cursor: 'not-allowed' }}
+                />
+                <StemToggleLabel style={{ opacity: 0.5 }}>
+                  Snap chords to beats (no chords yet)
+                </StemToggleLabel>
+              </StemToggleRow>
+              <StemToggleRow>
+                <StemToggleSwitch
+                  $enabled={useBeatSyncDetection}
+                  onClick={() => setUseBeatSyncDetection(!useBeatSyncDetection)}
+                />
+                <StemToggleLabel>
+                  Beat-synchronous detection (re-analyze to apply)
+                </StemToggleLabel>
+              </StemToggleRow>
+              <TabPlaceholder>
+                No chords detected yet. Extract audio and wait for chord
+                analysis.
+              </TabPlaceholder>
+            </VStack>
           )
         }
 
@@ -2162,6 +2483,52 @@ export function YouTubeChordPlayer({
 
         return (
           <ChordAnalysisSection>
+            {/* Backing track option */}
+            <StemToggleRow style={{ marginBottom: 8 }}>
+              <StemToggleSwitch
+                $enabled={!!(useBackingTrack && hasBackingTrack)}
+                onClick={() => {
+                  if (hasBackingTrack) {
+                    setUseBackingTrack(!useBackingTrack)
+                  }
+                }}
+                style={{
+                  opacity: hasBackingTrack ? 1 : 0.4,
+                  cursor: hasBackingTrack ? 'pointer' : 'not-allowed',
+                }}
+              />
+              <StemToggleLabel style={{ opacity: hasBackingTrack ? 1 : 0.5 }}>
+                Use backing track for analysis
+                {!hasBackingTrack && ' (separate stems first)'}
+              </StemToggleLabel>
+            </StemToggleRow>
+            <StemToggleRow>
+              <StemToggleSwitch
+                $enabled={snapToBeats}
+                onClick={() => setSnapToBeats(!snapToBeats)}
+                style={{
+                  opacity: songData?.tempo?.beats?.length ? 1 : 0.4,
+                  cursor: songData?.tempo?.beats?.length
+                    ? 'pointer'
+                    : 'not-allowed',
+                }}
+              />
+              <StemToggleLabel
+                style={{ opacity: songData?.tempo?.beats?.length ? 1 : 0.5 }}
+              >
+                Snap chords to beats
+                {!songData?.tempo?.beats?.length && ' (no beats detected)'}
+              </StemToggleLabel>
+            </StemToggleRow>
+            <StemToggleRow>
+              <StemToggleSwitch
+                $enabled={useBeatSyncDetection}
+                onClick={() => setUseBeatSyncDetection(!useBeatSyncDetection)}
+              />
+              <StemToggleLabel>
+                Beat-synchronous detection (re-analyze to apply)
+              </StemToggleLabel>
+            </StemToggleRow>
             {/* Progression */}
             {analysis.progression.length > 0 && (
               <ProgressionSection>
@@ -2271,6 +2638,8 @@ export function YouTubeChordPlayer({
             ) : null}
           </VStack>
         )
+      case 'fretboard':
+        return <FretboardTabContent />
       default:
         return null
     }
@@ -2414,10 +2783,16 @@ export function YouTubeChordPlayer({
                   progress?.status === 'pending'
                 const isEnabled = enabledLibraries.has(lib.id)
 
+                // Apply beat quantization if enabled
+                const displayChords =
+                  snapToBeats && songData.tempo?.beats?.length
+                    ? quantizeChordsToBeats(chords, songData.tempo.beats)
+                    : chords
+
                 return (
                   <ChordTimeline
                     key={lib.id}
-                    chords={chords}
+                    chords={displayChords}
                     currentTime={currentTimeSeconds}
                     duration={songData.duration}
                     libraryName={lib.name}
@@ -2427,6 +2802,9 @@ export function YouTubeChordPlayer({
                     onToggle={() => handleLibraryToggle(lib.id)}
                     isLoading={isProcessing}
                     loadingProgress={progress?.progress}
+                    beats={songData.tempo?.beats}
+                    showBeats={isEnabled}
+                    onDelete={() => handleLibraryDelete(lib.id)}
                   />
                 )
               })}

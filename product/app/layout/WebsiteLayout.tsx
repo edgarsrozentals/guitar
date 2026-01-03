@@ -12,8 +12,10 @@ import styled from 'styled-components'
 
 import { makeCagedPath } from '../caged/state/caged'
 import { makeChordsPath } from '../chords/state/chords'
+import { UserDropdown } from '../components/UserDropdown'
 import { ProductLogo } from '../product/ProductLogo'
 import { makeScalePath } from '../scale/state/scale'
+import { useAuth } from '../state/auth/AuthProvider'
 import { makeTriadPath } from '../triad/state/triad'
 
 const LogoWrapper = styled(Link)`
@@ -56,6 +58,7 @@ const items = [
 export const WebsiteLayout = ({ children }: ChildrenProp) => {
   const { events } = useRouter()
   const containerRef = useRef<HTMLDivElement>(null)
+  const { user, loading } = useAuth()
 
   useEffect(() => {
     const handleRouteChange = () => {
@@ -82,7 +85,7 @@ export const WebsiteLayout = ({ children }: ChildrenProp) => {
       renderTopbarItems={() => (
         <>
           <div />
-          <HStack>
+          <HStack alignItems="center" gap={8}>
             {items.map(({ name, href }) => (
               <Link key={name} href={href}>
                 <Button kind="ghost" as="div">
@@ -90,6 +93,16 @@ export const WebsiteLayout = ({ children }: ChildrenProp) => {
                 </Button>
               </Link>
             ))}
+            {!loading &&
+              (user ? (
+                <UserDropdown />
+              ) : (
+                <Link href="/login">
+                  <Button kind="ghost" as="div">
+                    Login
+                  </Button>
+                </Link>
+              ))}
           </HStack>
         </>
       )}
@@ -101,6 +114,16 @@ export const WebsiteLayout = ({ children }: ChildrenProp) => {
                 <OverlayNavigationItem as="div">{name}</OverlayNavigationItem>
               </Link>
             ))}
+            {!loading && !user && (
+              <Link onClick={onClose} href="/login">
+                <OverlayNavigationItem as="div">Login</OverlayNavigationItem>
+              </Link>
+            )}
+            {!loading && user && (
+              <Link onClick={onClose} href="/profile">
+                <OverlayNavigationItem as="div">Profile</OverlayNavigationItem>
+              </Link>
+            )}
           </VStack>
         </SeparatedByLine>
       )}

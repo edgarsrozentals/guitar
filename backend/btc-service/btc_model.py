@@ -1,139 +1,198 @@
-"""
-BTC (Bi-directional Transformer for Chord Recognition) Model
+from utils.transformer_modules import *
+from utils.transformer_modules import _gen_timing_signal, _gen_bias_mask
+from utils.hparams import HParams
 
-Implementation of the transformer-based chord recognition model.
-Based on: "A Bi-Directional Transformer for Musical Chord Recognition" (ISMIR 2019)
-"""
+use_cuda = torch.cuda.is_available()
 
-import torch
-import torch.nn as nn
-import math
+class self_attention_block(nn.Module):
+    def __init__(self, hidden_size, total_key_depth, total_value_depth, filter_size, num_heads,
+                 bias_mask=None, layer_dropout=0.0, attention_dropout=0.0, relu_dropout=0.0, attention_map=False):
+        super(self_attention_block, self).__init__()
+
+        self.attention_map = attention_map
+        self.multi_head_attention = MultiHeadAttention(hidden_size, total_key_depth, total_value_depth,hidden_size, num_heads, bias_mask, attention_dropout, attention_map)
+        self.positionwise_convolution = PositionwiseFeedForward(hidden_size, filter_size, hidden_size, layer_config='cc', padding='both', dropout=relu_dropout)
+        self.dropout = nn.Dropout(layer_dropout)
+        self.layer_norm_mha = LayerNorm(hidden_size)
+        self.layer_norm_ffn = LayerNorm(hidden_size)
+
+    def forward(self, inputs):
+        x = inputs
+
+        # Layer Normalization
+        x_norm = self.layer_norm_mha(x)
+
+        # Multi-head attention
+        if self.attention_map is True:
+            y, weights = self.multi_head_attention(x_norm, x_norm, x_norm)
+        else:
+            y = self.multi_head_attention(x_norm, x_norm, x_norm)
+
+        # Dropout and residual
+        x = self.dropout(x + y)
+
+        # Layer Normalization
+        x_norm = self.layer_norm_ffn(x)
+
+        # Positionwise Feedforward
+        y = self.positionwise_convolution(x_norm)
+
+        # Dropout and residual
+        y = self.dropout(x + y)
+
+        if self.attention_map is True:
+            return y, weights
+        return y
+
+class bi_directional_self_attention(nn.Module):
+    def __init__(self, hidden_size, total_key_depth, total_value_depth, filter_size, num_heads, max_length,
+                 layer_dropout=0.0, attention_dropout=0.0, relu_dropout=0.0):
+
+        super(bi_directional_self_attention, self).__init__()
+
+        self.weights_list = list()
+
+        params = (hidden_size,
+                  total_key_depth or hidden_size,
+                  total_value_depth or hidden_size,
+                  filter_size,
+                  num_heads,
+                  _gen_bias_mask(max_length),
+                  layer_dropout,
+                  attention_dropout,
+                  relu_dropout,
+                  True)
+
+        self.attn_block = self_attention_block(*params)
+
+        params = (hidden_size,
+                  total_key_depth or hidden_size,
+                  total_value_depth or hidden_size,
+                  filter_size,
+                  num_heads,
+                  torch.transpose(_gen_bias_mask(max_length), dim0=2, dim1=3),
+                  layer_dropout,
+                  attention_dropout,
+                  relu_dropout,
+                  True)
+
+        self.backward_attn_block = self_attention_block(*params)
+
+        self.linear = nn.Linear(hidden_size*2, hidden_size)
+
+    def forward(self, inputs):
+        x, list = inputs
+
+        # Forward Self-attention Block
+        encoder_outputs, weights = self.attn_block(x)
+        # Backward Self-attention Block
+        reverse_outputs, reverse_weights = self.backward_attn_block(x)
+        # Concatenation and Fully-connected Layer
+        outputs = torch.cat((encoder_outputs, reverse_outputs), dim=2)
+        y = self.linear(outputs)
+
+        # Attention weights for Visualization
+        self.weights_list = list
+        self.weights_list.append(weights)
+        self.weights_list.append(reverse_weights)
+        return y, self.weights_list
+
+class bi_directional_self_attention_layers(nn.Module):
+    def __init__(self, embedding_size, hidden_size, num_layers, num_heads, total_key_depth, total_value_depth,
+                 filter_size, max_length=100, input_dropout=0.0, layer_dropout=0.0,
+                 attention_dropout=0.0, relu_dropout=0.0):
+        super(bi_directional_self_attention_layers, self).__init__()
+
+        self.timing_signal = _gen_timing_signal(max_length, hidden_size)
+        params = (hidden_size,
+                  total_key_depth or hidden_size,
+                  total_value_depth or hidden_size,
+                  filter_size,
+                  num_heads,
+                  max_length,
+                  layer_dropout,
+                  attention_dropout,
+                  relu_dropout)
+        self.embedding_proj = nn.Linear(embedding_size, hidden_size, bias=False)
+        self.self_attn_layers = nn.Sequential(*[bi_directional_self_attention(*params) for l in range(num_layers)])
+        self.layer_norm = LayerNorm(hidden_size)
+        self.input_dropout = nn.Dropout(input_dropout)
+
+    def forward(self, inputs):
+        # Add input dropout
+        x = self.input_dropout(inputs)
+
+        # Project to hidden size
+        x = self.embedding_proj(x)
+
+        # Add timing signal
+        x += self.timing_signal[:, :inputs.shape[1], :].type_as(inputs.data)
+
+        # A Stack of Bi-directional Self-attention Layers
+        y, weights_list = self.self_attn_layers((x, []))
+
+        # Layer Normalization
+        y = self.layer_norm(y)
+        return y, weights_list
+
+class BTC_model(nn.Module):
+    def __init__(self, config):
+        super(BTC_model, self).__init__()
+
+        self.timestep = config['timestep']
+        self.probs_out = config['probs_out']
+
+        params = (config['feature_size'],
+                  config['hidden_size'],
+                  config['num_layers'],
+                  config['num_heads'],
+                  config['total_key_depth'],
+                  config['total_value_depth'],
+                  config['filter_size'],
+                  config['timestep'],
+                  config['input_dropout'],
+                  config['layer_dropout'],
+                  config['attention_dropout'],
+                  config['relu_dropout'])
+
+        self.self_attn_layers = bi_directional_self_attention_layers(*params)
+        self.output_layer = SoftmaxOutputLayer(hidden_size=config['hidden_size'], output_size=config['num_chords'], probs_out=config['probs_out'])
+
+    def forward(self, x, labels):
+        labels = labels.view(-1, self.timestep)
+        # Output of Bi-directional Self-attention Layers
+        self_attn_output, weights_list = self.self_attn_layers(x)
+
+        # return logit values for CRF
+        if self.probs_out is True:
+            logits = self.output_layer(self_attn_output)
+            return logits
+
+        # Output layer and Soft-max
+        prediction,second = self.output_layer(self_attn_output)
+        prediction = prediction.view(-1)
+        second = second.view(-1)
+
+        # Loss Calculation
+        loss = self.output_layer.loss(self_attn_output, labels)
+        return prediction, loss, weights_list, second
+
+if __name__ == "__main__":
+    config = HParams.load("run_config.yaml")
+    device = torch.device("cuda" if use_cuda else "cpu")
+
+    batch_size = 2
+    timestep = 108
+    feature_size = 144
+    num_chords = 25
+
+    features = torch.randn(batch_size,timestep,feature_size,requires_grad=True).to(device)
+    chords = torch.randint(25,(batch_size*timestep,)).to(device)
+
+    model = BTC_model(config=config.model).to(device)
+
+    prediction, loss, weights_list, second = model(features, chords)
+    print(prediction.size())
+    print(loss)
 
 
-class PositionalEncoding(nn.Module):
-    """Sinusoidal positional encoding for transformer."""
-
-    def __init__(self, d_model: int, max_len: int = 10000, dropout: float = 0.1):
-        super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
-
-        # Create positional encoding matrix
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)  # (1, max_len, d_model)
-
-        self.register_buffer('pe', pe)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: Tensor of shape (batch, seq_len, d_model)
-        """
-        x = x + self.pe[:, :x.size(1), :]
-        return self.dropout(x)
-
-
-class BTCModel(nn.Module):
-    """
-    Bi-directional Transformer for Chord Recognition.
-
-    Architecture:
-    1. Input projection from CQT features to model dimension
-    2. Positional encoding
-    3. Transformer encoder layers (bi-directional attention)
-    4. Linear classifier for chord labels
-    """
-
-    def __init__(
-        self,
-        n_chords: int = 25,
-        input_dim: int = 84,  # CQT bins (7 octaves * 12 bins)
-        d_model: int = 256,
-        n_heads: int = 8,
-        n_layers: int = 6,
-        d_ff: int = 1024,
-        dropout: float = 0.1,
-        max_len: int = 10000
-    ):
-        super().__init__()
-
-        self.d_model = d_model
-
-        # Input projection
-        self.input_proj = nn.Linear(input_dim, d_model)
-
-        # Positional encoding
-        self.pos_encoder = PositionalEncoding(d_model, max_len, dropout)
-
-        # Transformer encoder
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=n_heads,
-            dim_feedforward=d_ff,
-            dropout=dropout,
-            activation='gelu',
-            batch_first=True
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
-
-        # Output classifier
-        self.classifier = nn.Sequential(
-            nn.LayerNorm(d_model),
-            nn.Linear(d_model, d_model // 2),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(d_model // 2, n_chords)
-        )
-
-        # Initialize weights
-        self._init_weights()
-
-    def _init_weights(self):
-        """Initialize weights with Xavier uniform."""
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass.
-
-        Args:
-            x: CQT features of shape (batch, time, freq)
-
-        Returns:
-            Chord logits of shape (batch, time, n_chords)
-        """
-        # Project input to model dimension
-        x = self.input_proj(x)  # (batch, time, d_model)
-
-        # Add positional encoding
-        x = self.pos_encoder(x)
-
-        # Transformer encoding (bi-directional attention)
-        x = self.transformer(x)  # (batch, time, d_model)
-
-        # Classify each time step
-        logits = self.classifier(x)  # (batch, time, n_chords)
-
-        return logits
-
-
-class BTCModelWithCRF(nn.Module):
-    """
-    BTC model with Conditional Random Field output layer.
-    CRF helps enforce temporal consistency in chord predictions.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.btc = BTCModel(*args, **kwargs)
-        # CRF layer would go here for training
-        # For inference, we just use the base model
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.btc(x)
