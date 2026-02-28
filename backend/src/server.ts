@@ -8,7 +8,16 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
 
-import { createLalalAIClient, StemType } from './lalalai'
+import { createLalalAIClient, LalalAIClient, StemType } from './lalalai'
+import { getUserApiKey } from './lib/apiKeys'
+import { isSupabaseConfigured } from './lib/supabase'
+import { optionalAuth } from './middleware/auth'
+import {
+  userSongsRouter,
+  userSongChordsRouter,
+  userSongStemsRouter,
+  userSongLyricsRouter,
+} from './routes'
 
 // Load environment variables from root .env file
 dotenv.config({ path: path.join(__dirname, '..', '..', '.env') })
@@ -19,7 +28,7 @@ const app = express()
 const PORT = 4568
 
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '5mb' }))
 
 // Directory to store extracted audio files
 const AUDIO_DIR = path.join(__dirname, '..', 'audio')
@@ -39,15 +48,33 @@ if (!fs.existsSync(LYRICS_DIR)) {
   fs.mkdirSync(LYRICS_DIR, { recursive: true })
 }
 
-// LALAL.ai client (initialized if API key is present)
-const LALAL_API_KEY = process.env.LALAL_API_KEY || ''
-const lalalClient = LALAL_API_KEY ? createLalalAIClient(LALAL_API_KEY) : null
+// Environment API keys (fallback)
+const ENV_LALAL_API_KEY = process.env.LALAL_API_KEY || ''
+const ENV_ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY || ''
 
-// AssemblyAI client for lyrics transcription
-const ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY || ''
-const assemblyClient = ASSEMBLYAI_API_KEY
-  ? new AssemblyAI({ apiKey: ASSEMBLYAI_API_KEY })
-  : null
+// Factory: get LALAL.ai client for a user (checks user key first, falls back to env)
+async function getLalalClient(
+  userId?: string | null,
+): Promise<LalalAIClient | null> {
+  if (userId) {
+    const userKey = await getUserApiKey(userId, 'lalal_ai')
+    if (userKey) return createLalalAIClient(userKey)
+  }
+  return ENV_LALAL_API_KEY ? createLalalAIClient(ENV_LALAL_API_KEY) : null
+}
+
+// Factory: get AssemblyAI client for a user (checks user key first, falls back to env)
+async function getAssemblyClient(
+  userId?: string | null,
+): Promise<AssemblyAI | null> {
+  if (userId) {
+    const userKey = await getUserApiKey(userId, 'assemblyai')
+    if (userKey) return new AssemblyAI({ apiKey: userKey })
+  }
+  return ENV_ASSEMBLYAI_API_KEY
+    ? new AssemblyAI({ apiKey: ENV_ASSEMBLYAI_API_KEY })
+    : null
+}
 
 // In-memory cache for processed songs
 const songCache: Map<string, SongData> = new Map()
@@ -69,6 +96,7 @@ function loadSongsMetadata() {
           // Ensure new fields exist (migration for old data)
           song.chordsByLibrary = song.chordsByLibrary || {}
           song.analyzedWith = song.analyzedWith || []
+          // Keep chordifyMetadata if present (from Chordify imports)
           // If we have chords but no chordsByLibrary.essentia, migrate
           if (song.chords?.length > 0 && !song.chordsByLibrary.essentia) {
             song.chordsByLibrary.essentia = song.chords
@@ -96,6 +124,8 @@ function saveSongsMetadata() {
       key: song.key,
       tempo: song.tempo,
       analyzedWith: song.analyzedWith || [],
+      chordifyMetadata:
+        (song as Record<string, unknown>).chordifyMetadata || null,
     }))
     fs.writeFileSync(SONGS_METADATA_FILE, JSON.stringify(songs, null, 2))
   } catch (error) {
@@ -163,15 +193,16 @@ type AudioAnalysis = {
 }
 
 // Supported chord detection libraries
-type ChordLibrary = 'essentia' | 'madmom' | 'btc'
+type ChordLibrary = 'essentia' | 'madmom' | 'btc' | 'chordify'
 
 const CHORD_LIBRARY_INFO: Record<
   ChordLibrary,
-  { name: string; accuracy: string }
+  { name: string; accuracy: string; isGroundTruth?: boolean }
 > = {
   essentia: { name: 'Essentia', accuracy: '77-80%' },
   madmom: { name: 'Madmom', accuracy: '89.6%' },
   btc: { name: 'BTC (Transformer)', accuracy: '~90%' },
+  chordify: { name: 'Chordify', accuracy: 'Ground Truth', isGroundTruth: true },
 }
 
 type ChordsByLibrary = {
@@ -216,15 +247,27 @@ async function getVideoInfo(
 function analyzeAudio(
   audioPath: string,
   useBeatSyncDetection: boolean = false,
+  essentiaSettings?: EssentiaSettings,
 ): Promise<AudioAnalysis | null> {
   return new Promise((resolve) => {
     const scriptPath = path.join(__dirname, 'detect_chords.py')
     const venvPython = path.join(__dirname, '..', 'venv', 'bin', 'python')
 
     const mode = useBeatSyncDetection ? 'beat_sync' : 'standard'
+    const settingsJson = essentiaSettings
+      ? JSON.stringify(essentiaSettings)
+      : '{}'
     console.log(`Running audio analysis on: ${audioPath} (mode: ${mode})`)
+    if (essentiaSettings) {
+      console.log(`Using custom Essentia settings:`, essentiaSettings)
+    }
 
-    const python = spawn(venvPython, [scriptPath, audioPath, mode])
+    const python = spawn(venvPython, [
+      scriptPath,
+      audioPath,
+      mode,
+      settingsJson,
+    ])
 
     let stdout = ''
     let stderr = ''
@@ -315,8 +358,11 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
       }
     })
 
+    let stderrOutput = ''
+
     ytdlp.stderr.on('data', (data) => {
       const output = data.toString()
+      stderrOutput += output
       // yt-dlp sometimes outputs progress to stderr
       const match = output.match(/(\d+\.?\d*)%/)
       if (match) {
@@ -330,6 +376,10 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
       if (output.includes('Destination:') || output.includes('ffmpeg')) {
         extractionProgress.set(videoId, { progress: 95, status: 'converting' })
       }
+      // Log warnings and errors
+      if (output.includes('ERROR') || output.includes('error')) {
+        console.error(`[yt-dlp stderr] ${output.trim()}`)
+      }
     })
 
     ytdlp.on('close', (code) => {
@@ -338,8 +388,15 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
         extractionProgress.set(videoId, { progress: 100, status: 'complete' })
         resolve(outputPath)
       } else {
-        console.error('yt-dlp failed with code:', code)
-        extractionProgress.set(videoId, { progress: 0, status: 'error' })
+        console.error(`yt-dlp failed with code: ${code}`)
+        if (stderrOutput) {
+          console.error(`yt-dlp stderr output:\n${stderrOutput}`)
+        }
+        extractionProgress.set(videoId, {
+          progress: 0,
+          status: 'error',
+          error: `yt-dlp exited with code ${code}`,
+        })
         resolve(null)
       }
     })
@@ -356,8 +413,27 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    supabase: isSupabaseConfigured(),
+  })
 })
+
+// ============================================
+// CLOUD STORAGE ROUTES (Supabase)
+// These routes require authentication and store data in Supabase
+// ============================================
+
+app.use('/api/user-songs', userSongsRouter)
+app.use('/api/user-songs', userSongChordsRouter)
+app.use('/api/user-songs', userSongStemsRouter)
+app.use('/api/user-songs', userSongLyricsRouter)
+
+// ============================================
+// LEGACY LOCAL STORAGE ROUTES
+// These routes use local file storage (to be deprecated after migration)
+// ============================================
 
 // List all processed songs
 app.get('/api/songs', (req, res) => {
@@ -367,12 +443,59 @@ app.get('/api/songs', (req, res) => {
     duration: song.duration,
     hasAudio: !!song.audioUrl,
     hasStems: fs.existsSync(path.join(STEMS_DIR, song.videoId)),
+    hasLyrics: fs.existsSync(path.join(LYRICS_DIR, `${song.videoId}.lrc`)),
+    hasChords: Object.keys(song.chordsByLibrary || {}).length > 0,
+    analyzedWith: song.analyzedWith || [],
     key: song.key,
     tempo: song.tempo,
   }))
   // Sort by title
   songs.sort((a, b) => a.title.localeCompare(b.title))
   res.json(songs)
+})
+
+// Delete a song and all associated data
+app.delete('/api/songs/:videoId', (req, res) => {
+  const { videoId } = req.params
+
+  if (!songCache.has(videoId)) {
+    return res.status(404).json({ error: 'Song not found' })
+  }
+
+  // Remove from cache
+  songCache.delete(videoId)
+
+  // Delete audio file
+  const audioPath = path.join(AUDIO_DIR, `${videoId}.mp3`)
+  if (fs.existsSync(audioPath)) {
+    fs.unlinkSync(audioPath)
+  }
+
+  // Delete stems directory
+  const stemDir = path.join(STEMS_DIR, videoId)
+  if (fs.existsSync(stemDir)) {
+    fs.rmSync(stemDir, { recursive: true })
+  }
+
+  // Delete lyrics file
+  const lrcPath = path.join(LYRICS_DIR, `${videoId}.lrc`)
+  if (fs.existsSync(lrcPath)) {
+    fs.unlinkSync(lrcPath)
+  }
+
+  // Clear lyrics cache
+  lyricsCache.delete(videoId)
+
+  // Clear any in-progress state
+  extractionProgress.delete(videoId)
+  stemProgress.delete(videoId)
+
+  // Persist metadata changes
+  saveSongsMetadata()
+
+  console.log(`Deleted song and all data for ${videoId}`)
+
+  res.json({ success: true, message: 'Song deleted' })
 })
 
 // Process a YouTube video
@@ -613,6 +736,10 @@ app.get('/api/songs/:videoId/chords', (req, res) => {
       library,
       chords,
       libraryInfo: CHORD_LIBRARY_INFO[library],
+      // Include chordifyMetadata for Chordify library (contains BPM for alignment)
+      ...(library === 'chordify' && {
+        chordifyMetadata: (song as Record<string, unknown>).chordifyMetadata,
+      }),
     })
   }
 
@@ -621,13 +748,16 @@ app.get('/api/songs/:videoId/chords', (req, res) => {
     defaultChords: song.chords,
     chordsByLibrary: song.chordsByLibrary || {},
     analyzedWith: song.analyzedWith || [],
+    chordifyMetadata:
+      (song as Record<string, unknown>).chordifyMetadata || null,
   })
 })
 
 // Analyze with a specific library
 app.post('/api/songs/:videoId/analyze/:library', async (req, res) => {
   const { videoId, library } = req.params
-  const { useBackingTrack, useBeatSyncDetection } = req.body || {}
+  const { useBackingTrack, useBeatSyncDetection, essentiaSettings } =
+    req.body || {}
 
   if (!['essentia', 'madmom', 'btc'].includes(library)) {
     return res.status(400).json({
@@ -693,7 +823,13 @@ app.post('/api/songs/:videoId/analyze/:library', async (req, res) => {
 
   if (library === 'essentia') {
     // Run local Essentia analysis
-    runEssentiaAnalysis(videoId, audioPath, progressKey, useBeatSyncDetection)
+    runEssentiaAnalysis(
+      videoId,
+      audioPath,
+      progressKey,
+      useBeatSyncDetection,
+      essentiaSettings,
+    )
   } else if (library === 'madmom') {
     // Run Madmom analysis (via Cloud Run)
     runMadmomAnalysis(videoId, audioPath, progressKey)
@@ -731,7 +867,7 @@ app.get('/api/songs/:videoId/analyze/:library/progress', (req, res) => {
 app.delete('/api/songs/:videoId/chords/:library', (req, res) => {
   const { videoId, library } = req.params
 
-  if (!['essentia', 'madmom', 'btc'].includes(library)) {
+  if (!['essentia', 'madmom', 'btc', 'chordify'].includes(library)) {
     return res.status(400).json({
       error: 'Invalid library',
       validLibraries: Object.keys(CHORD_LIBRARY_INFO),
@@ -758,6 +894,11 @@ app.delete('/api/songs/:videoId/chords/:library', (req, res) => {
     song.chords = []
   }
 
+  // If chordify, also clear chordifyMetadata
+  if (library === 'chordify') {
+    delete (song as Record<string, unknown>).chordifyMetadata
+  }
+
   // Clear analysis progress
   const progressKey = `${videoId}:${library}`
   chordAnalysisProgress.delete(progressKey)
@@ -774,12 +915,163 @@ app.delete('/api/songs/:videoId/chords/:library', (req, res) => {
   })
 })
 
+// Import chords from Chordify (ground truth)
+// Accepts either:
+// - No body: scrapes Chordify directly (may fail due to Cloudflare)
+// - { html: "..." }: uses provided HTML (for browser-fetched content)
+app.post('/api/songs/:videoId/import-chordify', async (req, res) => {
+  const { videoId } = req.params
+  const { html: providedHtml } = req.body || {}
+
+  try {
+    // Dynamic import to avoid loading cheerio unless needed
+    const { scrapeChordify } = await import('./chordify/scraper')
+    const { transformChordifyHtml, toSongMetadataFormat } =
+      await import('./chordify/transformer')
+
+    console.log(`Importing Chordify data for ${videoId}`)
+
+    let html: string
+
+    if (providedHtml) {
+      // Use provided HTML (from browser automation or manual fetch)
+      console.log('Using provided HTML')
+      html = providedHtml
+    } else {
+      // Try to scrape directly (may fail due to Cloudflare)
+      const scrapeResult = await scrapeChordify(videoId)
+
+      if (scrapeResult.success === false) {
+        const { error } = scrapeResult
+        const statusCode = error.type === 'NOT_FOUND' ? 404 : 500
+
+        // Add hint about Cloudflare if that's the issue
+        const hint =
+          error.message.includes('Cloudflare') ||
+          error.message.includes('browser automation')
+            ? ' Try using browser automation (Hyperbrowser) to fetch the HTML and pass it in the request body as { html: "..." }'
+            : ''
+
+        return res.status(statusCode).json({
+          success: false,
+          error: error.message + hint,
+          type: error.type,
+        })
+      }
+
+      html = scrapeResult.html
+    }
+
+    // Validate HTML has chord data
+    if (!html.includes('data-handle=')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid HTML - no chord data found',
+        type: 'PARSE_ERROR',
+      })
+    }
+
+    // Transform the HTML to our format
+    const importResult = transformChordifyHtml(html, videoId)
+    const songFormat = toSongMetadataFormat(importResult)
+
+    // Get or create song entry
+    let song = songCache.get(videoId)
+    if (!song) {
+      // Create minimal song entry if it doesn't exist
+      song = {
+        videoId,
+        title: importResult.metadata.title,
+        duration: importResult.metadata.duration,
+        audioPath: null,
+        audioUrl: null,
+        chords: [],
+        chordsByLibrary: {},
+        key: null,
+        tempo: null,
+        analyzedWith: [],
+      }
+      songCache.set(videoId, song)
+    }
+
+    // Store Chordify chords
+    song.chordsByLibrary = song.chordsByLibrary || {}
+    song.chordsByLibrary.chordify = songFormat.chords
+
+    // Update analyzedWith
+    song.analyzedWith = song.analyzedWith || []
+    if (!song.analyzedWith.includes('chordify')) {
+      song.analyzedWith.push('chordify')
+    }
+
+    // Store Chordify-specific metadata
+    ;(song as Record<string, unknown>).chordifyMetadata =
+      songFormat.chordifyMetadata
+
+    // Update tempo/key if not already set
+    if (!song.tempo) {
+      song.tempo = {
+        bpm: songFormat.tempo.bpm,
+        confidence: 1.0, // Chordify is trusted source
+        beatCount: importResult.rawChordCount,
+        beats: [], // Chordify doesn't provide individual beat positions
+      }
+    }
+    if (!song.key && songFormat.key) {
+      song.key = {
+        root: songFormat.key.root,
+        scale: songFormat.key.quality === 'minor' ? 'minor' : 'major',
+        strength: 1.0, // Chordify is trusted source
+      }
+    }
+
+    // Save to disk
+    saveSongsMetadata()
+
+    console.log(
+      `Successfully imported ${importResult.chords.length} chords from Chordify for ${videoId}`,
+    )
+
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        source: 'chordify',
+        metadata: importResult.metadata,
+        chordCount: importResult.chords.length,
+        rawChordCount: importResult.rawChordCount,
+      },
+    })
+  } catch (error) {
+    console.error('Chordify import error:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      type: 'INTERNAL_ERROR',
+    })
+  }
+})
+
+// Essentia settings type
+type EssentiaSettings = {
+  silenceThreshold?: number
+  hpcpSize?: number
+  harmonics?: number
+  nonLinear?: boolean
+  minFrequency?: number
+  maxFrequency?: number
+  windowSize?: number
+  maxPeaks?: number
+  magnitudeThreshold?: number
+}
+
 // Run Essentia analysis in background
 async function runEssentiaAnalysis(
   videoId: string,
   audioPath: string,
   progressKey: string,
   useBeatSyncDetection: boolean = false,
+  essentiaSettings?: EssentiaSettings,
 ) {
   try {
     chordAnalysisProgress.set(progressKey, {
@@ -787,7 +1079,11 @@ async function runEssentiaAnalysis(
       status: 'processing',
     })
 
-    const analysis = await analyzeAudio(audioPath, useBeatSyncDetection)
+    const analysis = await analyzeAudio(
+      audioPath,
+      useBeatSyncDetection,
+      essentiaSettings,
+    )
 
     if (analysis) {
       const song = songCache.get(videoId)
@@ -802,6 +1098,10 @@ async function runEssentiaAnalysis(
         if (song.chords.length === 0) {
           song.chords = analysis.chords
           song.key = analysis.key
+        }
+        // Always update tempo from Essentia (it provides actual beat positions)
+        // Chordify only provides BPM, not individual beat timestamps
+        if (analysis.tempo) {
           song.tempo = analysis.tempo
         }
         saveSongsMetadata()
@@ -1041,64 +1341,72 @@ async function runBtcAnalysis(
 // ============ STEM SEPARATION ENDPOINTS ============
 
 // Start stem separation for a video
-app.post('/api/songs/:videoId/stems/separate', async (req, res) => {
-  const { videoId } = req.params
-  const { stems = ['vocals', 'drum', 'bass', 'electric_guitar', 'piano'] } =
-    req.body
+app.post(
+  '/api/songs/:videoId/stems/separate',
+  optionalAuth,
+  async (req, res) => {
+    const { videoId } = req.params
+    const { stems = ['vocals', 'drum', 'bass', 'electric_guitar', 'piano'] } =
+      req.body
 
-  if (!lalalClient) {
-    return res.status(503).json({
-      error: 'Stem separation not available',
-      message: 'LALAL_API_KEY not configured',
+    const client = await getLalalClient(req.user?.id)
+    if (!client) {
+      return res.status(503).json({
+        error: 'Stem separation not available',
+        message:
+          'No LALAL.ai API key configured. Add your key in Profile > API Keys, or set LALAL_API_KEY env var.',
+      })
+    }
+
+    // Check if audio file exists
+    const audioPath = path.join(AUDIO_DIR, `${videoId}.mp3`)
+    if (!fs.existsSync(audioPath)) {
+      return res.status(400).json({
+        error: 'Audio file not found',
+        message: 'Please extract audio first before separating stems',
+      })
+    }
+
+    // Check if already processing or complete
+    const existing = stemProgress.get(videoId)
+    if (
+      existing &&
+      (existing.status === 'processing' || existing.status === 'uploading')
+    ) {
+      return res.json({
+        status: existing.status,
+        progress: existing.progress,
+        message: 'Stem separation already in progress',
+      })
+    }
+
+    if (existing?.status === 'complete' && existing.stems) {
+      return res.json({
+        status: 'complete',
+        stems: existing.stems,
+      })
+    }
+
+    // Start stem separation in background
+    stemProgress.set(videoId, { progress: 0, status: 'pending' })
+
+    separateStems(videoId, audioPath, stems as StemType[], client).catch(
+      (error) => {
+        console.error(`Stem separation failed for ${videoId}:`, error)
+        stemProgress.set(videoId, {
+          progress: 0,
+          status: 'error',
+          error: error.message,
+        })
+      },
+    )
+
+    res.json({
+      status: 'started',
+      message: 'Stem separation started',
     })
-  }
-
-  // Check if audio file exists
-  const audioPath = path.join(AUDIO_DIR, `${videoId}.mp3`)
-  if (!fs.existsSync(audioPath)) {
-    return res.status(400).json({
-      error: 'Audio file not found',
-      message: 'Please extract audio first before separating stems',
-    })
-  }
-
-  // Check if already processing or complete
-  const existing = stemProgress.get(videoId)
-  if (
-    existing &&
-    (existing.status === 'processing' || existing.status === 'uploading')
-  ) {
-    return res.json({
-      status: existing.status,
-      progress: existing.progress,
-      message: 'Stem separation already in progress',
-    })
-  }
-
-  if (existing?.status === 'complete' && existing.stems) {
-    return res.json({
-      status: 'complete',
-      stems: existing.stems,
-    })
-  }
-
-  // Start stem separation in background
-  stemProgress.set(videoId, { progress: 0, status: 'pending' })
-
-  separateStems(videoId, audioPath, stems as StemType[]).catch((error) => {
-    console.error(`Stem separation failed for ${videoId}:`, error)
-    stemProgress.set(videoId, {
-      progress: 0,
-      status: 'error',
-      error: error.message,
-    })
-  })
-
-  res.json({
-    status: 'started',
-    message: 'Stem separation started',
-  })
-})
+  },
+)
 
 // Get stem separation progress
 app.get('/api/songs/:videoId/stems/progress', (req, res) => {
@@ -1167,16 +1475,18 @@ app.delete('/api/songs/:videoId/stems', (req, res) => {
 })
 
 // Check LALAL.ai account balance
-app.get('/api/stems/balance', async (req, res) => {
-  if (!lalalClient) {
+app.get('/api/stems/balance', optionalAuth, async (req, res) => {
+  const client = await getLalalClient(req.user?.id)
+  if (!client) {
     return res.status(503).json({
       error: 'Stem separation not available',
-      message: 'LALAL_API_KEY not configured',
+      message:
+        'No LALAL.ai API key configured. Add your key in Profile > API Keys, or set LALAL_API_KEY env var.',
     })
   }
 
   try {
-    const minutesLeft = await lalalClient.getMinutesLeft()
+    const minutesLeft = await client.getMinutesLeft()
     res.json({ minutesLeft })
   } catch (_error) {
     res.status(500).json({ error: 'Failed to check balance' })
@@ -1188,9 +1498,8 @@ async function separateStems(
   videoId: string,
   audioPath: string,
   stems: StemType[],
+  client: LalalAIClient,
 ) {
-  if (!lalalClient) throw new Error('LALAL.ai client not initialized')
-
   const stemDir = path.join(STEMS_DIR, videoId)
   if (!fs.existsSync(stemDir)) {
     fs.mkdirSync(stemDir, { recursive: true })
@@ -1201,14 +1510,14 @@ async function separateStems(
     console.log(`[Stems] Uploading audio for ${videoId}...`)
     stemProgress.set(videoId, { progress: 5, status: 'uploading' })
 
-    const uploadResult = await lalalClient.uploadFile(audioPath)
+    const uploadResult = await client.uploadFile(audioPath)
     console.log(`[Stems] Uploaded: ${uploadResult.id}`)
 
     // Step 2: Start stem separation
     console.log(`[Stems] Starting separation for stems: ${stems.join(', ')}`)
     stemProgress.set(videoId, { progress: 10, status: 'processing' })
 
-    const taskId = await lalalClient.splitMultistem(uploadResult.id, stems, {
+    const taskId = await client.splitMultistem(uploadResult.id, stems, {
       format: 'mp3',
     })
 
@@ -1219,7 +1528,7 @@ async function separateStems(
     })
 
     // Step 3: Wait for completion with progress updates
-    const results = await lalalClient.waitForCompletion(taskId, (progress) => {
+    const results = await client.waitForCompletion(taskId, (progress) => {
       // Scale progress from 15-85%
       const scaledProgress = 15 + progress * 0.7
       stemProgress.set(videoId, {
@@ -1276,7 +1585,7 @@ async function separateStems(
 
     // Cleanup: Delete source from LALAL.ai
     try {
-      await lalalClient.deleteSource(uploadResult.id)
+      await client.deleteSource(uploadResult.id)
     } catch (e) {
       console.warn('[Stems] Failed to cleanup source:', e)
     }
@@ -1345,7 +1654,7 @@ function generateJobId(): string {
 }
 
 // Start lyrics generation
-app.post('/api/lyrics/generate', async (req, res) => {
+app.post('/api/lyrics/generate', optionalAuth, async (req, res) => {
   const { videoId, audioSource = 'full_audio' } = req.body
 
   if (!videoId) {
@@ -1400,6 +1709,16 @@ app.post('/api/lyrics/generate', async (req, res) => {
     }
   }
 
+  // Resolve AssemblyAI client before starting background job
+  const assemblyClient = await getAssemblyClient(req.user?.id)
+  if (!assemblyClient) {
+    return res.status(503).json({
+      error: 'Lyrics generation not available',
+      message:
+        'No AssemblyAI API key configured. Add your key in Profile > API Keys, or set ASSEMBLYAI_API_KEY env var.',
+    })
+  }
+
   // Create a new job
   const jobId = generateJobId()
   const job: LyricsJob = {
@@ -1413,7 +1732,7 @@ app.post('/api/lyrics/generate', async (req, res) => {
   lyricsJobs.set(jobId, job)
 
   // Start lyrics generation in background
-  generateLyrics(job, audioPath).catch((error) => {
+  generateLyrics(job, audioPath, assemblyClient).catch((error) => {
     console.error(`Lyrics generation failed for ${videoId}:`, error)
     job.status = 'error'
     job.error = error.message
@@ -1587,7 +1906,11 @@ function transcriptToLrc(
 }
 
 // Background lyrics generation function using AssemblyAI
-async function generateLyrics(job: LyricsJob, audioPath: string) {
+async function generateLyrics(
+  job: LyricsJob,
+  audioPath: string,
+  assemblyClient: AssemblyAI,
+) {
   try {
     job.status = 'processing'
     job.progress = 10
@@ -1595,13 +1918,6 @@ async function generateLyrics(job: LyricsJob, audioPath: string) {
     console.log(
       `[Lyrics] Starting generation for ${job.videoId} using ${job.audioSource}`,
     )
-
-    // Check if AssemblyAI is configured
-    if (!assemblyClient) {
-      throw new Error(
-        'AssemblyAI not configured. Please set ASSEMBLYAI_API_KEY in .env',
-      )
-    }
 
     job.progress = 20
 
@@ -1685,10 +2001,10 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(`Stems files directory: ${STEMS_DIR}`)
     console.log(`Lyrics files directory: ${LYRICS_DIR}`)
     console.log(
-      `LALAL.ai API: ${lalalClient ? 'Configured' : 'Not configured (set LALAL_API_KEY)'}`,
+      `LALAL.ai API: ${ENV_LALAL_API_KEY ? 'Env key configured' : 'No env key (user keys supported via Profile)'}`,
     )
     console.log(
-      `AssemblyAI API: ${assemblyClient ? 'Configured' : 'Not configured (set ASSEMBLYAI_API_KEY)'}`,
+      `AssemblyAI API: ${ENV_ASSEMBLYAI_API_KEY ? 'Env key configured' : 'No env key (user keys supported via Profile)'}`,
     )
   })
 }

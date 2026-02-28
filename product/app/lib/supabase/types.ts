@@ -115,6 +115,244 @@ export type Database = {
           last_accessed?: string
         }
       }
+      user_songs: {
+        Row: {
+          id: string
+          user_id: string
+          video_id: string
+          title: string
+          artist: string | null
+          duration_seconds: number
+          audio_storage_path: string | null
+          has_stems: boolean
+          has_lyrics: boolean
+          key_detected: {
+            root: string
+            scale: 'major' | 'minor'
+            strength: number
+          } | null
+          tempo_detected: {
+            bpm: number
+            confidence: number
+            beats?: number[]
+          } | null
+          is_public: boolean
+          created_at: string
+          updated_at: string
+          last_accessed_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          video_id: string
+          title: string
+          artist?: string | null
+          duration_seconds: number
+          audio_storage_path?: string | null
+          has_stems?: boolean
+          has_lyrics?: boolean
+          key_detected?: {
+            root: string
+            scale: 'major' | 'minor'
+            strength: number
+          } | null
+          tempo_detected?: {
+            bpm: number
+            confidence: number
+            beats?: number[]
+          } | null
+          is_public?: boolean
+          created_at?: string
+          updated_at?: string
+          last_accessed_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          video_id?: string
+          title?: string
+          artist?: string | null
+          duration_seconds?: number
+          audio_storage_path?: string | null
+          has_stems?: boolean
+          has_lyrics?: boolean
+          key_detected?: {
+            root: string
+            scale: 'major' | 'minor'
+            strength: number
+          } | null
+          tempo_detected?: {
+            bpm: number
+            confidence: number
+            beats?: number[]
+          } | null
+          is_public?: boolean
+          created_at?: string
+          updated_at?: string
+          last_accessed_at?: string
+        }
+      }
+      user_song_chords: {
+        Row: {
+          id: string
+          user_song_id: string
+          library: 'essentia' | 'madmom' | 'btc' | 'chordify'
+          chords: Array<{
+            time: number
+            chord: { root: string; quality: string }
+          }>
+          tempo: {
+            bpm: number
+            confidence: number
+            beatCount?: number
+            beats?: number[]
+          } | null
+          key: { root: string; scale: string; strength: number } | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_song_id: string
+          library: 'essentia' | 'madmom' | 'btc' | 'chordify'
+          chords: Array<{
+            time: number
+            chord: { root: string; quality: string }
+          }>
+          tempo?: {
+            bpm: number
+            confidence: number
+            beatCount?: number
+            beats?: number[]
+          } | null
+          key?: { root: string; scale: string; strength: number } | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_song_id?: string
+          library?: 'essentia' | 'madmom' | 'btc' | 'chordify'
+          chords?: Array<{
+            time: number
+            chord: { root: string; quality: string }
+          }>
+          tempo?: {
+            bpm: number
+            confidence: number
+            beatCount?: number
+            beats?: number[]
+          } | null
+          key?: { root: string; scale: string; strength: number } | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_song_stems: {
+        Row: {
+          id: string
+          user_song_id: string
+          stem_type:
+            | 'vocals'
+            | 'backing'
+            | 'drums'
+            | 'bass'
+            | 'guitar'
+            | 'piano'
+            | 'other'
+          storage_path: string
+          duration_seconds: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_song_id: string
+          stem_type:
+            | 'vocals'
+            | 'backing'
+            | 'drums'
+            | 'bass'
+            | 'guitar'
+            | 'piano'
+            | 'other'
+          storage_path: string
+          duration_seconds?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_song_id?: string
+          stem_type?:
+            | 'vocals'
+            | 'backing'
+            | 'drums'
+            | 'bass'
+            | 'guitar'
+            | 'piano'
+            | 'other'
+          storage_path?: string
+          duration_seconds?: number | null
+          created_at?: string
+        }
+      }
+      user_song_lyrics: {
+        Row: {
+          id: string
+          user_song_id: string
+          lrc_content: string
+          has_word_timing: boolean
+          audio_source: 'vocals_stem' | 'full_audio' | null
+          storage_path: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_song_id: string
+          lrc_content: string
+          has_word_timing?: boolean
+          audio_source?: 'vocals_stem' | 'full_audio' | null
+          storage_path?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_song_id?: string
+          lrc_content?: string
+          has_word_timing?: boolean
+          audio_source?: 'vocals_stem' | 'full_audio' | null
+          storage_path?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_api_keys: {
+        Row: {
+          id: string
+          user_id: string
+          service: 'lalal_ai' | 'assemblyai'
+          api_key: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          service: 'lalal_ai' | 'assemblyai'
+          api_key: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          service?: 'lalal_ai' | 'assemblyai'
+          api_key?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 }

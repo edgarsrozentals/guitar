@@ -10,6 +10,7 @@ type UseLyricsGenerationInput = {
   videoId: string | null
   hasVocalsStem: boolean
   onStateChange: (state: LyricsState) => void
+  getAuthHeaders?: () => Record<string, string>
 }
 
 type UseLyricsGenerationOutput = {
@@ -22,6 +23,7 @@ export function useLyricsGeneration({
   videoId,
   hasVocalsStem,
   onStateChange,
+  getAuthHeaders,
 }: UseLyricsGenerationInput): UseLyricsGenerationOutput {
   // Auto-select audio source based on vocals stem availability
   const audioSource: AudioSource = hasVocalsStem ? 'vocals_stem' : 'full_audio'
@@ -121,6 +123,7 @@ export function useLyricsGeneration({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(getAuthHeaders?.() ?? {}),
         },
         body: JSON.stringify({
           videoId,
@@ -186,7 +189,7 @@ export function useLyricsGeneration({
         message,
       })
     }
-  }, [videoId, audioSource, onStateChange, pollJobStatus])
+  }, [videoId, audioSource, onStateChange, pollJobStatus, getAuthHeaders])
 
   const cancelGeneration = useCallback(() => {
     cancelledRef.current = true

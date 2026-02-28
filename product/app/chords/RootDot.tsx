@@ -26,12 +26,19 @@ export const RootDot = ({ string, fret }: RootDotProps) => {
 
   const top = toPercents(getStringPosition(string))
 
+  // Calculate fret center for note positioning (traditional fretboard visualization)
+  const fretPosition = getFretPosition({
+    totalFrets,
+    visibleFrets,
+    index: fret,
+  })
+  const fretCenter = (fretPosition.start + fretPosition.end) / 2
+
   // Position the dot at the top-right of the note
-  const noteLeft = fret === -1
-    ? toSizeUnit(-config.nutWidth)
-    : toPercents(
-        getFretPosition({ totalFrets, visibleFrets, index: fret }).end,
-      )
+  const noteLeft =
+    fret === -1
+      ? `calc(${toSizeUnit(-config.nutWidth)} - ${toSizeUnit(config.noteSize / 2)})`
+      : toPercents(fretCenter)
 
   // Offset to position at top-right corner of the note circle
   const left = `calc(${noteLeft} + ${toSizeUnit(config.noteSize / 2 - 14)})`

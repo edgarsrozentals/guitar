@@ -70,9 +70,6 @@ export const ChordFretboard = ({
     const result: { shape: (typeof shapes)[0]; rootFret: number }[] = []
 
     for (const shape of shapes) {
-      // Skip if this shape is not enabled
-      if (!settings.enabledShapes.has(shape.name)) continue
-
       const baseRootFret = rootPositions[shape.name]
 
       // Add shape at base position and octave up
@@ -83,6 +80,17 @@ export const ChordFretboard = ({
         // Skip if below nut or beyond reasonable range
         if (lowestFret < 0) continue
         if (rootFret > 15) continue
+
+        // Skip disabled shapes UNLESS they're at open position (fret 0)
+        const isOpenPosition = lowestFret === 0
+        if (!settings.enabledShapes.has(shape.name) && !isOpenPosition) continue
+
+        // Skip shapes that extend beyond visible frets (incomplete shapes)
+        const fretPositions = shapeToFretPositions(shape, rootFret)
+        const highestFret = Math.max(
+          ...fretPositions.filter((f): f is number => f !== null),
+        )
+        if (highestFret > defaultVisibleFrets.end + 1) continue // +1 because fret positions are 1-indexed
 
         result.push({ shape, rootFret })
       }
@@ -97,9 +105,13 @@ export const ChordFretboard = ({
 
     const result = findShapeForPosition(rootNote, position, shapeType)
 
-    // Filter by enabled shapes
+    // Filter by enabled shapes, but allow disabled shapes at open position
     if (result && !settings.enabledShapes.has(result.shape.name)) {
-      return null
+      const lowestFret = result.rootFret - result.shape.rootOffset
+      const isOpenPosition = lowestFret === 0
+      if (!isOpenPosition) {
+        return null
+      }
     }
 
     return result

@@ -186,3 +186,14 @@ Chord analysis results stored in `backend/songs-metadata.json`:
   "tempo": { "bpm": 120, "beats": [0.5, 1.0, 1.5, ...] },
   "key": { "root": "A", "scale": "minor" }
 }
+
+
+## Core Memory
+
+This project uses Core Memory for persistent knowledge storage shared across all Claude Code instances.
+
+- **Label:** guitar-app
+- **Label ID:** `proj_b3bf0b4a3744e8b1d8945572`
+- When ingesting memories, ALWAYS include this label ID in the `labelIds` array
+- Use `memory_search` at the start of conversations to check for relevant context
+- Use `memory_ingest` at the end of conversations to store important decisions, solutions, and insights

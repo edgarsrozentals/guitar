@@ -1,5 +1,5 @@
-# Sprint Status - YouTube Chord Player
-# Generated: 2026-01-02
+# Sprint Status - Guitar Practice App
+# Generated: 2026-01-03
 # Project: guitar-app
 # Tracking System: file-system
 
@@ -17,42 +17,125 @@
 #   - review: Implementation complete, ready for review
 #   - done: Story completed
 
-generated: 2026-01-02
+generated: 2026-01-03
 project: guitar-app
 project_key: youtube-chord-player
 tracking_system: file-system
-story_location: "_bmad-output/implementation-artifacts"
-stories_doc: "_bmad-output/planning-artifacts/epic3-karaoke-lyrics-stories.md"
+story_location: "_bmad-output/planning-artifacts"
 
 # Reference Documents
 references:
   brd: "_bmad-output/planning-artifacts/brd-youtube-chord-player.md"
   architecture: "_bmad-output/planning-artifacts/architecture-youtube-chord-player.md"
   epic3_stories: "_bmad-output/planning-artifacts/epic3-karaoke-lyrics-stories.md"
+  epic_tracker: "_bmad-output/planning-artifacts/cloud-migration-epic-tracker.md"
+  epics_overview: "_bmad-output/planning-artifacts/epics.md"
+
+# =============================================================================
+# COMPLETED EPICS (Core Feature Development)
+# =============================================================================
 
 development_status:
   # EPIC 1: Core Playback - COMPLETED
-  epic-1:
+  epic-1-core:
     name: "Core Playback"
     status: done
     notes: "YouTube URL input, chord detection, synchronized playback, position selector, CAGED shapes"
 
   # EPIC 2: Stems & Practice - COMPLETED (loop deferred)
-  epic-2:
+  epic-2-stems:
     name: "Stems & Practice"
     status: done
     notes: "Stem separation, stem controls, speed control, chord anticipation. Loop sections deferred."
 
-  # EPIC 3: Karaoke Lyrics - READY FOR DEVELOPMENT
-  epic-3:
+  # EPIC 3: Karaoke Lyrics - COMPLETED
+  epic-3-lyrics:
     name: "Karaoke Lyrics"
-    status: in-progress
-    notes: "On-demand lyrics transcription with word-level karaoke sync"
+    status: done
+    notes: "On-demand lyrics transcription with word-level karaoke sync - COMPLETED 2026-01-04"
 
-  # EPIC 3 Stories
+# =============================================================================
+# CLOUD MIGRATION EPICS (Platform Preparation)
+# =============================================================================
+
+  # EPIC 1: Cloud Song Storage - P0 Critical - COMPLETED
+  cloud-epic-1:
+    name: "Cloud Song Storage"
+    status: done
+    priority: P0
+    story_count: 7
+    location: "_bmad-output/planning-artifacts/epic1-cloud-storage-stories/"
+    notes: "COMPLETED 2026-01-04 - All 7 stories done: DB schema, storage, auth, APIs, frontend integration"
+
+  # EPIC 2: Existing Song Migration - P0 Critical
+  cloud-epic-2:
+    name: "Existing Song Migration"
+    status: backlog
+    priority: P0
+    story_count: 4
+    location: "_bmad-output/planning-artifacts/epic2-song-migration-stories/"
+    notes: "Migrate 17 existing songs from local to Supabase"
+    depends_on: cloud-epic-1
+
+  # EPIC 3: Song Library UI - P1 High
+  cloud-epic-3:
+    name: "Song Library UI"
+    status: backlog
+    priority: P1
+    story_count: 5
+    location: "_bmad-output/planning-artifacts/epic3-library-ui-stories/"
+    notes: "Library page with grid/list view, search, filter, delete"
+    depends_on: cloud-epic-1
+
+  # EPIC 4: Demo Songs & Public Access - P1 High
+  cloud-epic-4:
+    name: "Demo Songs & Public Access"
+    status: backlog
+    priority: P1
+    story_count: 5
+    location: "_bmad-output/planning-artifacts/epic4-demo-songs-stories/"
+    notes: "Demo songs for visitors, marketing landing page"
+    depends_on: cloud-epic-1
+
+  # EPIC 5: Platform-Neutral Branding - P2 Medium
+  cloud-epic-5:
+    name: "Platform-Neutral Branding"
+    status: backlog
+    priority: P2
+    story_count: 4
+    location: "_bmad-output/planning-artifacts/epic5-debranding-stories/"
+    notes: "Remove YouTube-specific references for broader platform support"
+
+  # EPIC 6: Production Deployment - P1 High
+  cloud-epic-6:
+    name: "Production Deployment"
+    status: backlog
+    priority: P1
+    story_count: 5
+    location: "_bmad-output/planning-artifacts/epic6-deployment-stories/"
+    notes: "Docker, Cloud Run, Vercel deployment with monitoring"
+    depends_on:
+      - cloud-epic-1
+      - cloud-epic-2
+      - cloud-epic-3
+      - cloud-epic-4
+
+  # EPIC 7: Admin Panel - P3 Low (Deferred)
+  cloud-epic-7:
+    name: "Admin Panel"
+    status: deferred
+    priority: P3
+    story_count: 5
+    location: "_bmad-output/planning-artifacts/epic7-admin-panel-stories/"
+    notes: "Future enhancement - user management, moderation, analytics"
+
+# =============================================================================
+# KARAOKE LYRICS STORIES (Epic 3 - COMPLETED)
+# =============================================================================
+
   3-1-lyrics-tab-ui-shell:
-    epic: epic-3
-    status: ready-for-dev
+    epic: epic-3-lyrics
+    status: done
     title: "Lyrics Tab UI Shell"
     priority: must-have
     backend_required: false
@@ -61,8 +144,8 @@ development_status:
     acceptance_criteria: 15
 
   3-2-audio-source-selection:
-    epic: epic-3
-    status: ready-for-dev
+    epic: epic-3-lyrics
+    status: done
     title: "Audio Source Selection"
     priority: must-have
     backend_required: false
@@ -71,8 +154,8 @@ development_status:
     acceptance_criteria: 9
 
   3-3-lyrics-generation-api:
-    epic: epic-3
-    status: ready-for-dev
+    epic: epic-3-lyrics
+    status: done
     title: "Lyrics Generation API Integration"
     priority: must-have
     backend_required: true
@@ -83,8 +166,8 @@ development_status:
       - 3-6-backend-lyrics-endpoint
 
   3-4-karaoke-display:
-    epic: epic-3
-    status: ready-for-dev
+    epic: epic-3-lyrics
+    status: done
     title: "Karaoke Lyrics Display with Rabbit Lyrics"
     priority: must-have
     backend_required: false
@@ -93,8 +176,8 @@ development_status:
     acceptance_criteria: 12
 
   3-5-playback-sync:
-    epic: epic-3
-    status: ready-for-dev
+    epic: epic-3-lyrics
+    status: done
     title: "Lyrics Playback Synchronization"
     priority: must-have
     backend_required: false
@@ -103,8 +186,8 @@ development_status:
     acceptance_criteria: 14
 
   3-6-backend-lyrics-endpoint:
-    epic: epic-3
-    status: ready-for-dev
+    epic: epic-3-lyrics
+    status: done
     title: "Backend - Lyrics Transcription Endpoint"
     priority: must-have
     backend_required: false
@@ -114,27 +197,509 @@ development_status:
     notes: "Runs locally on Mac M4 with Metal acceleration"
 
   epic-3-retrospective:
-    epic: epic-3
-    status: optional
+    epic: epic-3-lyrics
+    status: skipped
     title: "Epic 3 Retrospective"
 
-# Implementation Recommendations
-implementation_order:
-  option_a_sequential:
-    - 3-6-backend-lyrics-endpoint
-    - 3-1-lyrics-tab-ui-shell
-    - 3-2-audio-source-selection
-    - 3-3-lyrics-generation-api
-    - 3-4-karaoke-display
-    - 3-5-playback-sync
+# =============================================================================
+# CLOUD STORAGE STORIES (Epic 1 - Ready for Dev)
+# =============================================================================
 
-  option_b_parallel:
-    track_a_frontend:
+  1-1-database-schema:
+    epic: cloud-epic-1
+    status: done
+    title: "Database Schema & RLS Policies"
+    priority: P0
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic1-cloud-storage-stories/story-1-1-database-schema.md"
+    notes: "Completed 2026-01-04 - Created user_songs, user_song_chords, user_song_stems, user_song_lyrics tables with RLS"
+
+  1-2-storage-bucket-config:
+    epic: cloud-epic-1
+    status: done
+    title: "Supabase Storage Bucket Configuration"
+    priority: P0
+    backend_required: true
+    complexity: small
+    location: "_bmad-output/planning-artifacts/epic1-cloud-storage-stories/story-1-2-storage-bucket-config.md"
+    notes: "Completed 2026-01-04 - Created song-files bucket with RLS policies via setup script"
+
+  1-3-auth-middleware:
+    epic: cloud-epic-1
+    status: done
+    title: "Authentication Middleware & Signed URLs"
+    priority: P0
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic1-cloud-storage-stories/story-1-3-auth-middleware.md"
+    depends_on:
+      - 1-1-database-schema
+      - 1-2-storage-bucket-config
+    notes: "Completed 2026-01-04 - Implemented authMiddleware, optionalAuth, signed URL generation"
+
+  1-4-upload-song-api:
+    epic: cloud-epic-1
+    status: done
+    title: "Upload Song & List Songs API"
+    priority: P0
+    backend_required: true
+    complexity: large
+    location: "_bmad-output/planning-artifacts/epic1-cloud-storage-stories/story-1-4-upload-song-api.md"
+    depends_on:
+      - 1-3-auth-middleware
+    notes: "Completed 2026-01-04 - Full CRUD for user_songs with audio upload and signed URLs"
+
+  1-5-chord-analysis-api:
+    epic: cloud-epic-1
+    status: done
+    title: "Chord Analysis CRUD API"
+    priority: P0
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic1-cloud-storage-stories/story-1-5-chord-analysis-api.md"
+    depends_on:
+      - 1-3-auth-middleware
+    notes: "Completed 2026-01-04 - GET/POST/DELETE for chord analyses with library filtering"
+
+  1-6-stems-lyrics-api:
+    epic: cloud-epic-1
+    status: done
+    title: "Stems & Lyrics Upload/Retrieval API"
+    priority: P0
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic1-cloud-storage-stories/story-1-6-stems-lyrics-api.md"
+    depends_on:
+      - 1-3-auth-middleware
+    notes: "Completed 2026-01-04 - Full CRUD for stems and lyrics with storage integration"
+
+  1-7-frontend-integration:
+    epic: cloud-epic-1
+    status: done
+    title: "Frontend Library Integration"
+    priority: P0
+    backend_required: false
+    complexity: large
+    location: "_bmad-output/planning-artifacts/epic1-cloud-storage-stories/story-1-7-frontend-integration.md"
+    depends_on:
+      - 1-4-upload-song-api
+      - 1-5-chord-analysis-api
+      - 1-6-stems-lyrics-api
+    notes: "Completed 2026-01-04 - API client, hooks, Library page, SaveToLibraryButton integrated"
+
+# =============================================================================
+# MIGRATION STORIES (Epic 2 - Ready for Dev)
+# =============================================================================
+
+  2-1-migration-script:
+    epic: cloud-epic-2
+    status: ready-for-dev
+    title: "Migration Script with Dry-Run Mode"
+    priority: P0
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic2-song-migration-stories/story-2-1-migration-script.md"
+    depends_on:
+      - 1-7-frontend-integration
+
+  2-2-execute-transfer:
+    epic: cloud-epic-2
+    status: ready-for-dev
+    title: "Execute Migration Transfer"
+    priority: P0
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic2-song-migration-stories/story-2-2-execute-transfer.md"
+    depends_on:
+      - 2-1-migration-script
+
+  2-3-verify-migration:
+    epic: cloud-epic-2
+    status: ready-for-dev
+    title: "Verify Migration Data Integrity"
+    priority: P0
+    backend_required: true
+    complexity: small
+    location: "_bmad-output/planning-artifacts/epic2-song-migration-stories/story-2-3-verify-migration.md"
+    depends_on:
+      - 2-2-execute-transfer
+
+  2-4-remove-local-files:
+    epic: cloud-epic-2
+    status: ready-for-dev
+    title: "Remove Local File Serving"
+    priority: P0
+    backend_required: true
+    complexity: small
+    location: "_bmad-output/planning-artifacts/epic2-song-migration-stories/story-2-4-remove-local-files.md"
+    depends_on:
+      - 2-3-verify-migration
+
+# =============================================================================
+# LIBRARY UI STORIES (Epic 3 Cloud - Ready for Dev)
+# =============================================================================
+
+  3-1-library-page:
+    epic: cloud-epic-3
+    status: ready-for-dev
+    title: "Library Page with Grid/List View"
+    priority: P1
+    backend_required: false
+    complexity: large
+    location: "_bmad-output/planning-artifacts/epic3-library-ui-stories/story-3-1-library-page.md"
+    depends_on:
+      - 1-7-frontend-integration
+
+  3-2-metadata-display:
+    epic: cloud-epic-3
+    status: ready-for-dev
+    title: "Song Metadata Display & Status Indicators"
+    priority: P1
+    backend_required: false
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic3-library-ui-stories/story-3-2-metadata-display.md"
+    depends_on:
+      - 3-1-library-page
+
+  3-3-search-filter:
+    epic: cloud-epic-3
+    status: ready-for-dev
+    title: "Search & Filter Functionality"
+    priority: P1
+    backend_required: false
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic3-library-ui-stories/story-3-3-search-filter.md"
+    depends_on:
+      - 3-1-library-page
+
+  3-4-delete-song:
+    epic: cloud-epic-3
+    status: ready-for-dev
+    title: "Delete Song with Confirmation"
+    priority: P1
+    backend_required: true
+    complexity: small
+    location: "_bmad-output/planning-artifacts/epic3-library-ui-stories/story-3-4-delete-song.md"
+    depends_on:
+      - 3-1-library-page
+
+  3-5-recent-songs:
+    epic: cloud-epic-3
+    status: ready-for-dev
+    title: "Recent Songs Tracking & Display"
+    priority: P1
+    backend_required: false
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic3-library-ui-stories/story-3-5-recent-songs.md"
+    depends_on:
+      - 3-1-library-page
+
+# =============================================================================
+# DEMO SONGS STORIES (Epic 4 - Ready for Dev)
+# =============================================================================
+
+  4-1-demo-schema-api:
+    epic: cloud-epic-4
+    status: ready-for-dev
+    title: "Demo Songs Database Schema & API"
+    priority: P1
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic4-demo-songs-stories/story-4-1-demo-schema-api.md"
+    depends_on:
+      - 1-1-database-schema
+
+  4-2-storage-seeding:
+    epic: cloud-epic-4
+    status: ready-for-dev
+    title: "Demo Storage Bucket & Content Seeding"
+    priority: P1
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic4-demo-songs-stories/story-4-2-storage-seeding.md"
+    depends_on:
+      - 4-1-demo-schema-api
+
+  4-3-demo-selection-page:
+    epic: cloud-epic-4
+    status: ready-for-dev
+    title: "Demo Song Selection Page"
+    priority: P1
+    backend_required: false
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic4-demo-songs-stories/story-4-3-demo-selection-page.md"
+    depends_on:
+      - 4-2-storage-seeding
+
+  4-4-demo-player:
+    epic: cloud-epic-4
+    status: ready-for-dev
+    title: "Read-Only Demo Player Experience"
+    priority: P1
+    backend_required: false
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic4-demo-songs-stories/story-4-4-demo-player.md"
+    depends_on:
+      - 4-3-demo-selection-page
+
+  4-5-marketing-ctas:
+    epic: cloud-epic-4
+    status: ready-for-dev
+    title: "Marketing CTAs & Landing Page"
+    priority: P1
+    backend_required: false
+    complexity: large
+    location: "_bmad-output/planning-artifacts/epic4-demo-songs-stories/story-4-5-marketing-ctas.md"
+    depends_on:
+      - 4-4-demo-player
+
+# =============================================================================
+# DEBRANDING STORIES (Epic 5 - Ready for Dev)
+# =============================================================================
+
+  5-1-rename-folder-files:
+    epic: cloud-epic-5
+    status: ready-for-dev
+    title: "Rename Folder Structure"
+    priority: P2
+    backend_required: false
+    complexity: small
+    location: "_bmad-output/planning-artifacts/epic5-debranding-stories/story-5-1-rename-folder-files.md"
+
+  5-2-update-component-names:
+    epic: cloud-epic-5
+    status: ready-for-dev
+    title: "Update Component & Type Names"
+    priority: P2
+    backend_required: false
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic5-debranding-stories/story-5-2-update-component-names.md"
+    depends_on:
+      - 5-1-rename-folder-files
+
+  5-3-update-ui-text:
+    epic: cloud-epic-5
+    status: ready-for-dev
+    title: "Update User-Facing Text & Placeholders"
+    priority: P2
+    backend_required: false
+    complexity: small
+    location: "_bmad-output/planning-artifacts/epic5-debranding-stories/story-5-3-update-ui-text.md"
+    depends_on:
+      - 5-2-update-component-names
+
+  5-4-update-documentation:
+    epic: cloud-epic-5
+    status: ready-for-dev
+    title: "Update Documentation & Verify"
+    priority: P2
+    backend_required: false
+    complexity: small
+    location: "_bmad-output/planning-artifacts/epic5-debranding-stories/story-5-4-update-documentation.md"
+    depends_on:
+      - 5-3-update-ui-text
+
+# =============================================================================
+# DEPLOYMENT STORIES (Epic 6 - Ready for Dev)
+# =============================================================================
+
+  6-1-containerization:
+    epic: cloud-epic-6
+    status: ready-for-dev
+    title: "Backend Containerization (Multi-Runtime)"
+    priority: P1
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic6-deployment-stories/story-6-1-containerization.md"
+
+  6-2-cloud-run-deploy:
+    epic: cloud-epic-6
+    status: ready-for-dev
+    title: "Cloud Run Service Deployment"
+    priority: P1
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic6-deployment-stories/story-6-2-cloud-run-deploy.md"
+    depends_on:
+      - 6-1-containerization
+
+  6-3-secrets-config:
+    epic: cloud-epic-6
+    status: ready-for-dev
+    title: "Secrets & Environment Configuration"
+    priority: P1
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic6-deployment-stories/story-6-3-secrets-config.md"
+    depends_on:
+      - 6-2-cloud-run-deploy
+
+  6-4-vercel-frontend:
+    epic: cloud-epic-6
+    status: ready-for-dev
+    title: "Frontend Deployment to Vercel"
+    priority: P1
+    backend_required: false
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic6-deployment-stories/story-6-4-vercel-frontend.md"
+    depends_on:
+      - 6-2-cloud-run-deploy
+
+  6-5-verification-monitoring:
+    epic: cloud-epic-6
+    status: ready-for-dev
+    title: "Production Verification & Monitoring"
+    priority: P1
+    backend_required: false
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic6-deployment-stories/story-6-5-verification-monitoring.md"
+    depends_on:
+      - 6-3-secrets-config
+      - 6-4-vercel-frontend
+
+# =============================================================================
+# ADMIN PANEL STORIES (Epic 7 - Deferred)
+# =============================================================================
+
+  7-1-admin-auth:
+    epic: cloud-epic-7
+    status: deferred
+    title: "Admin Role & Authentication"
+    priority: P3
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic7-admin-panel-stories/story-7-1-admin-auth.md"
+
+  7-2-user-management:
+    epic: cloud-epic-7
+    status: deferred
+    title: "User Management Dashboard"
+    priority: P3
+    backend_required: true
+    complexity: large
+    location: "_bmad-output/planning-artifacts/epic7-admin-panel-stories/story-7-2-user-management.md"
+    depends_on:
+      - 7-1-admin-auth
+
+  7-3-song-moderation:
+    epic: cloud-epic-7
+    status: deferred
+    title: "Song Moderation Interface"
+    priority: P3
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic7-admin-panel-stories/story-7-3-song-moderation.md"
+    depends_on:
+      - 7-1-admin-auth
+
+  7-4-analytics-dashboard:
+    epic: cloud-epic-7
+    status: deferred
+    title: "Analytics Dashboard"
+    priority: P3
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic7-admin-panel-stories/story-7-4-analytics-dashboard.md"
+    depends_on:
+      - 7-1-admin-auth
+
+  7-5-system-settings:
+    epic: cloud-epic-7
+    status: deferred
+    title: "System Settings & Configuration"
+    priority: P3
+    backend_required: true
+    complexity: medium
+    location: "_bmad-output/planning-artifacts/epic7-admin-panel-stories/story-7-5-system-settings.md"
+    depends_on:
+      - 7-1-admin-auth
+
+# =============================================================================
+# IMPLEMENTATION RECOMMENDATIONS
+# =============================================================================
+
+implementation_order:
+  # Karaoke Lyrics - COMPLETED 2026-01-04
+  lyrics_epic:
+    status: done
+    sequential:
+      - 3-6-backend-lyrics-endpoint
       - 3-1-lyrics-tab-ui-shell
       - 3-2-audio-source-selection
+      - 3-3-lyrics-generation-api
       - 3-4-karaoke-display
       - 3-5-playback-sync
-    track_b_backend:
-      - 3-6-backend-lyrics-endpoint
-    integration:
-      - 3-3-lyrics-generation-api
+
+  # Cloud Migration (CURRENT PHASE)
+  cloud_phase_1_foundation:
+    - 1-1-database-schema
+    - 1-2-storage-bucket-config
+    - 1-3-auth-middleware
+    - 1-4-upload-song-api
+    - 1-5-chord-analysis-api
+    - 1-6-stems-lyrics-api
+    - 1-7-frontend-integration
+
+  cloud_phase_2_migration:
+    - 2-1-migration-script
+    - 2-2-execute-transfer
+    - 2-3-verify-migration
+    - 2-4-remove-local-files
+
+  cloud_phase_3_ui:
+    parallel_track_a:
+      - 3-1-library-page
+      - 3-2-metadata-display
+      - 3-3-search-filter
+      - 3-4-delete-song
+      - 3-5-recent-songs
+    parallel_track_b:
+      - 4-1-demo-schema-api
+      - 4-2-storage-seeding
+      - 4-3-demo-selection-page
+      - 4-4-demo-player
+      - 4-5-marketing-ctas
+
+  cloud_phase_4_polish:
+    - 5-1-rename-folder-files
+    - 5-2-update-component-names
+    - 5-3-update-ui-text
+    - 5-4-update-documentation
+
+  cloud_phase_5_deploy:
+    - 6-1-containerization
+    - 6-2-cloud-run-deploy
+    - 6-3-secrets-config
+    - 6-4-vercel-frontend
+    - 6-5-verification-monitoring
+
+  future_admin:
+    - 7-1-admin-auth
+    - 7-2-user-management
+    - 7-3-song-moderation
+    - 7-4-analytics-dashboard
+    - 7-5-system-settings
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+
+summary:
+  total_epics: 10
+  completed_epics: 4
+  in_progress_epics: 0
+  backlog_epics: 5
+  deferred_epics: 1
+
+  total_stories: 41
+  ready_for_dev: 22
+  deferred: 5
+  in_progress: 0
+  done: 13
+
+  cloud_migration_stories: 35
+  lyrics_stories: 6
+
+  last_updated: "2026-01-04"
+  notes: "Cloud Epic 1 (Cloud Song Storage) COMPLETED - all 7 stories done. Ready for Epic 2 (Migration)."

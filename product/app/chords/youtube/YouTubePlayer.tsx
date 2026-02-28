@@ -1,23 +1,40 @@
 'use client'
 
 import { VStack } from '@lib/ui/css/stack'
-import { useCallback, useRef, useEffect } from 'react'
+import {
+  useCallback,
+  useRef,
+  useEffect,
+  useImperativeHandle,
+  forwardRef,
+} from 'react'
 import styled, { keyframes } from 'styled-components'
 
 import { useYouTubePlayer } from './hooks/useYouTubePlayer'
 import { PlaybackControls } from './PlaybackControls'
+
+export type YouTubePlayerHandle = {
+  toggle: () => void
+  play: () => void
+  pause: () => void
+  seekTo: (seconds: number) => void
+  // Playback controls
+  getVolume: () => number
+  setVolume: (volume: number) => void
+  isMuted: () => boolean
+  toggleMute: () => void
+  getPlaybackRate: () => number
+  setPlaybackRate: (rate: number) => void
+  isReady: () => boolean
+}
 
 type YouTubePlayerProps = {
   videoId: string
   onTimeUpdate?: (timeMs: number) => void
   onPlayStateChange?: (isPlaying: boolean) => void
   onSeek?: (timeMs: number) => void
+  onSeekPreview?: (timeMs: number) => void // Called during drag to preview position
   muteVideo?: boolean // Mute YouTube video (used when stems are playing)
-  stemsArePlaying?: boolean // Whether stems are playing instead of video audio
-  onStemsMuteToggle?: () => void // Toggle mute for stems
-  stemsMuted?: boolean // Whether stems are currently muted
-  stemsVolume?: number // Master volume for stems (0-100)
-  onStemsVolumeChange?: (volume: number) => void // Change stems volume
 }
 
 const Container = styled.div`
@@ -83,25 +100,29 @@ const LoadingText = styled.span`
 
 const PLAYER_CONTAINER_ID = 'youtube-player-container'
 
-export function YouTubePlayer({
-  videoId,
-  onTimeUpdate,
-  onPlayStateChange,
-  onSeek,
-  muteVideo,
-  stemsArePlaying,
-  onStemsMuteToggle,
-  stemsMuted,
-  stemsVolume,
-  onStemsVolumeChange,
-}: YouTubePlayerProps) {
+export const YouTubePlayer = forwardRef<
+  YouTubePlayerHandle,
+  YouTubePlayerProps
+>(function YouTubePlayer(
+  {
+    videoId,
+    onTimeUpdate,
+    onPlayStateChange,
+    onSeek,
+    onSeekPreview,
+    muteVideo,
+  },
+  ref,
+) {
   // Store callbacks in refs for stable reference
   const onTimeUpdateRef = useRef(onTimeUpdate)
   const onPlayStateChangeRef = useRef(onPlayStateChange)
   const onSeekRef = useRef(onSeek)
+  const onSeekPreviewRef = useRef(onSeekPreview)
   onTimeUpdateRef.current = onTimeUpdate
   onPlayStateChangeRef.current = onPlayStateChange
   onSeekRef.current = onSeek
+  onSeekPreviewRef.current = onSeekPreview
 
   // Track last reported play state
   const lastPlayStateRef = useRef<boolean | null>(null)
@@ -138,6 +159,11 @@ export function YouTubePlayer({
     [controls],
   )
 
+  // Preview seek position (for chord timeline sync during drag)
+  const handleSeekPreview = useCallback((seconds: number) => {
+    onSeekPreviewRef.current?.(seconds * 1000)
+  }, [])
+
   // Mute YouTube video when stems are playing (one-way: only force mute when muteVideo is true)
   // Don't auto-unmute - let user control that manually
   useEffect(() => {
@@ -145,6 +171,32 @@ export function YouTubePlayer({
       controls.toggleMute()
     }
   }, [muteVideo, playerState.isMuted, controls])
+
+  // Expose player controls to parent via ref
+  useImperativeHandle(
+    ref,
+    () => ({
+      toggle: controls.toggle,
+      play: controls.play,
+      pause: controls.pause,
+      seekTo: controls.seekTo,
+      // Playback controls
+      getVolume: () => playerState.volume,
+      setVolume: controls.setVolume,
+      isMuted: () => playerState.isMuted,
+      toggleMute: controls.toggleMute,
+      getPlaybackRate: () => playerState.playbackRate,
+      setPlaybackRate: controls.setPlaybackRate,
+      isReady: () => playerState.isReady,
+    }),
+    [
+      controls,
+      playerState.volume,
+      playerState.isMuted,
+      playerState.playbackRate,
+      playerState.isReady,
+    ],
+  )
 
   return (
     <Container>
@@ -161,31 +213,12 @@ export function YouTubePlayer({
 
         <PlaybackControls
           isReady={playerState.isReady}
-          isPlaying={playerState.isPlaying}
           currentTime={playerState.currentTime}
           duration={playerState.duration}
-          playbackRate={playerState.playbackRate}
-          volume={stemsArePlaying ? (stemsVolume ?? 100) : playerState.volume}
-          isMuted={
-            stemsArePlaying ? (stemsMuted ?? false) : playerState.isMuted
-          }
-          onPlay={controls.play}
-          onPause={controls.pause}
-          onToggle={controls.toggle}
           onSeek={handleSeek}
-          onPlaybackRateChange={controls.setPlaybackRate}
-          onVolumeChange={
-            stemsArePlaying && onStemsVolumeChange
-              ? onStemsVolumeChange
-              : controls.setVolume
-          }
-          onMuteToggle={
-            stemsArePlaying && onStemsMuteToggle
-              ? onStemsMuteToggle
-              : controls.toggleMute
-          }
+          onSeekPreview={handleSeekPreview}
         />
       </VStack>
     </Container>
   )
-}
+})

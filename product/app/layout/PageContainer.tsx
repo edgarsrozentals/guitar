@@ -12,5 +12,5 @@ export const PageContainer = styled.div<PageContainerProps>`
       contentMaxWidth,
     })}
 
-  ${verticalPadding(80)}
+  ${verticalPadding(24)}
 `

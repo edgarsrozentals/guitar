@@ -69,13 +69,18 @@ export const PositionNote = ({
 
   const value = getNoteFromPosition({ position: { string, fret } })
 
-  const left = `calc(${
+  // Calculate fret center for note positioning (traditional fretboard visualization)
+  const fretPosition = getFretPosition({
+    totalFrets,
+    visibleFrets,
+    index: fret,
+  })
+  const fretCenter = (fretPosition.start + fretPosition.end) / 2
+
+  const left =
     fret === -1
-      ? toSizeUnit(-config.nutWidth)
-      : toPercents(
-          getFretPosition({ totalFrets, visibleFrets, index: fret }).end,
-        )
-  } - ${toSizeUnit(config.noteSize / 2 + config.noteFretOffset)})`
+      ? `calc(${toSizeUnit(-config.nutWidth)} - ${toSizeUnit(config.noteSize / 2)})`
+      : toPercents(fretCenter)
 
   const isOpen = fret === -1
 

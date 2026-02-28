@@ -21,9 +21,9 @@ type UserPreferencesRow = {
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
-  enabledShapes: new Set(['C', 'A', 'G', 'E', 'D'] as CAGEDShapeName[]),
-  showAllPositions: false,
-  highlightRoots: true,
+  enabledShapes: new Set(['A', 'E', 'D'] as CAGEDShapeName[]),
+  showAllPositions: true,
+  highlightRoots: false,
   colorByShape: true,
   colorByPosition: false,
 }

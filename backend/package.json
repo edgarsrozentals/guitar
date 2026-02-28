@@ -9,10 +9,14 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
     "assemblyai": "^4.22.1",
+    "cheerio": "^1.1.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "puppeteer": "^24.34.0",
+    "puppeteer-core": "^24.34.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

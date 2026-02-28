@@ -4,8 +4,37 @@ import { getSupabaseBrowserClient } from '../../lib/supabase/client'
 import { useAuth } from '../auth/AuthProvider'
 
 export type StemType = 'vocals' | 'drum' | 'bass' | 'electric_guitar' | 'piano'
-export type ChordLibrary = 'essentia' | 'madmom' | 'btc'
-export type MediaTab = 'audio' | 'chords' | 'stems' | 'lyrics' | 'fretboard'
+export type ChordLibrary = 'essentia' | 'madmom' | 'btc' | 'chordify'
+export type MediaTab =
+  | 'audio'
+  | 'chords'
+  | 'generation'
+  | 'stems'
+  | 'lyrics'
+  | 'fretboard'
+
+// Essentia configuration settings
+export type EssentiaSettings = {
+  // Silence detection
+  silenceThreshold: number // 0.001 - 0.05, default 0.01
+
+  // HPCP settings
+  hpcpSize: number // 12, 36, or 120
+  harmonics: number // 0-8
+  nonLinear: boolean
+  minFrequency: number // 20-200
+  maxFrequency: number // 2000-5000
+
+  // Chord detection
+  windowSize: number // 1-5 seconds
+
+  // SpectralPeaks
+  maxPeaks: number // 30-100
+  magnitudeThreshold: number // 0.00001 - 0.001
+}
+
+// Hidden timelines
+export type HiddenTimelines = Record<ChordLibrary, boolean>
 
 type SongSettingsRow = {
   active_tab: string
@@ -18,6 +47,8 @@ type SongSettingsRow = {
   use_backing_track: boolean
   snap_to_beats: boolean
   use_beat_sync_detection: boolean
+  essentia_settings: EssentiaSettings | null
+  hidden_timelines: HiddenTimelines | null
 }
 
 export type SongSettings = {
@@ -31,6 +62,8 @@ export type SongSettings = {
   useBackingTrack: boolean
   snapToBeats: boolean
   useBeatSyncDetection: boolean
+  essentiaSettings: EssentiaSettings
+  hiddenTimelines: HiddenTimelines
 }
 
 export const ALL_STEM_TYPES: StemType[] = [
@@ -59,17 +92,38 @@ const DEFAULT_STEM_MUTED: Record<string, boolean> = {
   backing: false,
 }
 
+export const DEFAULT_ESSENTIA_SETTINGS: EssentiaSettings = {
+  silenceThreshold: 0.01,
+  hpcpSize: 12,
+  harmonics: 0,
+  nonLinear: false,
+  minFrequency: 40,
+  maxFrequency: 5000,
+  windowSize: 2,
+  maxPeaks: 60,
+  magnitudeThreshold: 0.00001,
+}
+
+const DEFAULT_HIDDEN_TIMELINES: HiddenTimelines = {
+  essentia: true,
+  madmom: true,
+  btc: true,
+  chordify: false,
+}
+
 const DEFAULT_SONG_SETTINGS: SongSettings = {
   activeTab: 'audio',
   selectedStems: new Set<StemType>(ALL_STEM_TYPES),
   stemVolumes: DEFAULT_STEM_VOLUMES,
   stemMuted: DEFAULT_STEM_MUTED,
   masterStemsVolume: 100,
-  activeLibrary: 'essentia',
-  enabledLibraries: new Set<ChordLibrary>(['essentia']),
+  activeLibrary: 'chordify',
+  enabledLibraries: new Set<ChordLibrary>(['essentia', 'chordify']),
   useBackingTrack: false,
   snapToBeats: false,
   useBeatSyncDetection: false,
+  essentiaSettings: DEFAULT_ESSENTIA_SETTINGS,
+  hiddenTimelines: DEFAULT_HIDDEN_TIMELINES,
 }
 
 type UseSongSettingsReturn = {
@@ -84,6 +138,8 @@ type UseSongSettingsReturn = {
   setUseBackingTrack: (use: boolean) => void
   setSnapToBeats: (snap: boolean) => void
   setUseBeatSyncDetection: (use: boolean) => void
+  setEssentiaSettings: (settings: EssentiaSettings) => void
+  setHiddenTimelines: (hidden: HiddenTimelines) => void
   loading: boolean
 }
 
@@ -131,6 +187,9 @@ export function useSongSettings(videoId: string | null): UseSongSettingsReturn {
             useBackingTrack: row.use_backing_track,
             snapToBeats: row.snap_to_beats,
             useBeatSyncDetection: row.use_beat_sync_detection,
+            essentiaSettings:
+              row.essentia_settings || DEFAULT_ESSENTIA_SETTINGS,
+            hiddenTimelines: row.hidden_timelines || DEFAULT_HIDDEN_TIMELINES,
           })
         }
       } catch (err) {
@@ -163,6 +222,8 @@ export function useSongSettings(videoId: string | null): UseSongSettingsReturn {
             use_backing_track: newSettings.useBackingTrack,
             snap_to_beats: newSettings.snapToBeats,
             use_beat_sync_detection: newSettings.useBeatSyncDetection,
+            essentia_settings: newSettings.essentiaSettings,
+            hidden_timelines: newSettings.hiddenTimelines,
             updated_at: new Date().toISOString(),
             last_accessed: new Date().toISOString(),
           } as any,
@@ -260,6 +321,17 @@ export function useSongSettings(videoId: string | null): UseSongSettingsReturn {
     [updateSettings],
   )
 
+  const setEssentiaSettings = useCallback(
+    (essentiaSettings: EssentiaSettings) =>
+      updateSettings({ essentiaSettings }),
+    [updateSettings],
+  )
+
+  const setHiddenTimelines = useCallback(
+    (hiddenTimelines: HiddenTimelines) => updateSettings({ hiddenTimelines }),
+    [updateSettings],
+  )
+
   return {
     settings,
     setActiveTab,
@@ -272,6 +344,8 @@ export function useSongSettings(videoId: string | null): UseSongSettingsReturn {
     setUseBackingTrack,
     setSnapToBeats,
     setUseBeatSyncDetection,
+    setEssentiaSettings,
+    setHiddenTimelines,
     loading,
   }
 }

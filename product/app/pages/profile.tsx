@@ -15,6 +15,7 @@ import {
 } from '../components/forms'
 import { UserAvatar } from '../components/UserAvatar'
 import { useAuth } from '../state/auth/AuthProvider'
+import { useApiKeys } from '../state/settings/useApiKeys'
 
 const Container = styled.div`
   display: flex;
@@ -64,6 +65,39 @@ const Divider = styled.hr`
   margin: 24px 0;
 `
 
+const HelperText = styled.p`
+  font-size: 12px;
+  color: ${getColor('textSupporting')};
+  margin: 4px 0 0 0;
+`
+
+const ApiKeyInputWrapper = styled.div`
+  position: relative;
+  display: flex;
+  gap: 8px;
+`
+
+const ToggleVisibilityButton = styled.button`
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: ${getColor('textSupporting')};
+  cursor: pointer;
+  padding: 4px;
+  font-size: 13px;
+
+  &:hover {
+    color: ${getColor('text')};
+  }
+`
+
+const ApiKeyInput = styled(FormInput)`
+  padding-right: 60px;
+`
+
 export default function ProfilePage() {
   const router = useRouter()
   const { user, profile, loading, updateProfile, updatePassword, signOut } =
@@ -80,6 +114,22 @@ export default function ProfilePage() {
 
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isSavingPassword, setIsSavingPassword] = useState(false)
+
+  const {
+    apiKeys,
+    loading: apiKeysLoading,
+    saving: apiKeysSaving,
+    updateApiKey,
+    saveApiKey,
+    deleteApiKey,
+  } = useApiKeys()
+  const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({})
+  const [apiKeySuccess, setApiKeySuccess] = useState<Record<string, boolean>>(
+    {},
+  )
+  const [apiKeyError, setApiKeyError] = useState<Record<string, string | null>>(
+    {},
+  )
 
   useEffect(() => {
     if (!loading && !user) {
@@ -139,6 +189,40 @@ export default function ProfilePage() {
     }
 
     setIsSavingPassword(false)
+  }
+
+  const handleSaveApiKey = async (service: 'lalal_ai' | 'assemblyai') => {
+    setApiKeyError((prev) => ({ ...prev, [service]: null }))
+    setApiKeySuccess((prev) => ({ ...prev, [service]: false }))
+
+    const { error } = await saveApiKey(service)
+
+    if (error) {
+      setApiKeyError((prev) => ({ ...prev, [service]: error }))
+    } else {
+      setApiKeySuccess((prev) => ({ ...prev, [service]: true }))
+      setTimeout(
+        () => setApiKeySuccess((prev) => ({ ...prev, [service]: false })),
+        3000,
+      )
+    }
+  }
+
+  const handleDeleteApiKey = async (service: 'lalal_ai' | 'assemblyai') => {
+    setApiKeyError((prev) => ({ ...prev, [service]: null }))
+    setApiKeySuccess((prev) => ({ ...prev, [service]: false }))
+
+    const { error } = await deleteApiKey(service)
+
+    if (error) {
+      setApiKeyError((prev) => ({ ...prev, [service]: error }))
+    } else {
+      setApiKeySuccess((prev) => ({ ...prev, [service]: true }))
+      setTimeout(
+        () => setApiKeySuccess((prev) => ({ ...prev, [service]: false })),
+        3000,
+      )
+    }
   }
 
   const handleSignOut = async () => {
@@ -257,6 +341,136 @@ export default function ProfilePage() {
               {isSavingPassword ? 'Updating...' : 'Update Password'}
             </Button>
           </form>
+        </Section>
+
+        <Divider />
+
+        <Section>
+          <SectionTitle>API Keys</SectionTitle>
+          <HelperText style={{ marginBottom: 16, marginTop: -8 }}>
+            Add your own API keys for stem separation and lyrics generation.
+            Keys are encrypted and stored securely.
+          </HelperText>
+
+          <FormGroup>
+            <FormLabel htmlFor="lalalApiKey">LALAL.ai API Key</FormLabel>
+            <HelperText style={{ marginBottom: 8 }}>
+              Used for stem separation. Get your key at{' '}
+              <a
+                href="https://www.lalal.ai/account/"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'inherit', textDecoration: 'underline' }}
+              >
+                lalal.ai/account
+              </a>
+            </HelperText>
+            {apiKeySuccess.lalal_ai && (
+              <FormSuccess>LALAL.ai key saved!</FormSuccess>
+            )}
+            {apiKeyError.lalal_ai && (
+              <FormError>{apiKeyError.lalal_ai}</FormError>
+            )}
+            <ApiKeyInputWrapper>
+              <ApiKeyInput
+                id="lalalApiKey"
+                type={showApiKey.lalal_ai ? 'text' : 'password'}
+                placeholder="Enter LALAL.ai API key"
+                value={apiKeys.lalal_ai}
+                onChange={(e) => updateApiKey('lalal_ai', e.target.value)}
+                disabled={apiKeysLoading}
+              />
+              <ToggleVisibilityButton
+                type="button"
+                onClick={() =>
+                  setShowApiKey((prev) => ({
+                    ...prev,
+                    lalal_ai: !prev.lalal_ai,
+                  }))
+                }
+              >
+                {showApiKey.lalal_ai ? 'Hide' : 'Show'}
+              </ToggleVisibilityButton>
+            </ApiKeyInputWrapper>
+            <HStack gap={8} style={{ marginTop: 8 }}>
+              <Button
+                kind="secondary"
+                onClick={() => handleSaveApiKey('lalal_ai')}
+                disabled={apiKeysSaving || !apiKeys.lalal_ai.trim()}
+              >
+                {apiKeysSaving ? 'Saving...' : 'Save'}
+              </Button>
+              {apiKeys.lalal_ai && (
+                <Button
+                  kind="ghost"
+                  onClick={() => handleDeleteApiKey('lalal_ai')}
+                  disabled={apiKeysSaving}
+                >
+                  Remove
+                </Button>
+              )}
+            </HStack>
+          </FormGroup>
+
+          <FormGroup>
+            <FormLabel htmlFor="assemblyaiApiKey">AssemblyAI API Key</FormLabel>
+            <HelperText style={{ marginBottom: 8 }}>
+              Used for lyrics generation. Get your key at{' '}
+              <a
+                href="https://www.assemblyai.com/app/account"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'inherit', textDecoration: 'underline' }}
+              >
+                assemblyai.com/app/account
+              </a>
+            </HelperText>
+            {apiKeySuccess.assemblyai && (
+              <FormSuccess>AssemblyAI key saved!</FormSuccess>
+            )}
+            {apiKeyError.assemblyai && (
+              <FormError>{apiKeyError.assemblyai}</FormError>
+            )}
+            <ApiKeyInputWrapper>
+              <ApiKeyInput
+                id="assemblyaiApiKey"
+                type={showApiKey.assemblyai ? 'text' : 'password'}
+                placeholder="Enter AssemblyAI API key"
+                value={apiKeys.assemblyai}
+                onChange={(e) => updateApiKey('assemblyai', e.target.value)}
+                disabled={apiKeysLoading}
+              />
+              <ToggleVisibilityButton
+                type="button"
+                onClick={() =>
+                  setShowApiKey((prev) => ({
+                    ...prev,
+                    assemblyai: !prev.assemblyai,
+                  }))
+                }
+              >
+                {showApiKey.assemblyai ? 'Hide' : 'Show'}
+              </ToggleVisibilityButton>
+            </ApiKeyInputWrapper>
+            <HStack gap={8} style={{ marginTop: 8 }}>
+              <Button
+                kind="secondary"
+                onClick={() => handleSaveApiKey('assemblyai')}
+                disabled={apiKeysSaving || !apiKeys.assemblyai.trim()}
+              >
+                {apiKeysSaving ? 'Saving...' : 'Save'}
+              </Button>
+              {apiKeys.assemblyai && (
+                <Button
+                  kind="ghost"
+                  onClick={() => handleDeleteApiKey('assemblyai')}
+                  disabled={apiKeysSaving}
+                >
+                  Remove
+                </Button>
+              )}
+            </HStack>
+          </FormGroup>
         </Section>
 
         <Divider />

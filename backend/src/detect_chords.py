@@ -2,8 +2,9 @@
 """
 Audio analysis using Essentia library.
 Detects chords, key, and tempo from audio files.
-Usage: python detect_chords.py <audio_file_path> [mode]
+Usage: python detect_chords.py <audio_file_path> [mode] [settings_json]
   mode: 'standard' (default) or 'beat_sync' (beat-synchronous detection)
+  settings_json: JSON string with custom Essentia settings
 Outputs JSON object with chords, key, and tempo to stdout.
 """
 
@@ -11,6 +12,19 @@ import sys
 import json
 import essentia.standard as es
 import numpy as np
+
+# Default settings for Essentia analysis
+DEFAULT_SETTINGS = {
+    'silenceThreshold': 0.01,      # RMS below this = silence
+    'hpcpSize': 12,                 # 12, 36, or 120
+    'harmonics': 0,                 # Number of harmonics (0-8)
+    'nonLinear': False,             # Apply non-linear compression
+    'minFrequency': 40,             # Minimum frequency for spectral peaks
+    'maxFrequency': 5000,           # Maximum frequency for spectral peaks
+    'windowSize': 2,                # ChordsDetection window size (seconds)
+    'maxPeaks': 60,                 # Maximum spectral peaks
+    'magnitudeThreshold': 0.00001,  # Threshold for spectral peaks
+}
 
 
 def detect_key(audio) -> dict:
@@ -53,11 +67,15 @@ def detect_tempo(audio) -> dict:
     }
 
 
-def detect_chords(audio_path: str) -> list:
+def detect_chords(audio_path: str, settings: dict = None) -> list:
     """
     Detect chords from an audio file using Essentia (standard frame-based).
     Returns a list of chord events with timestamps.
+    Includes silence detection to output 'N' (rest) during quiet sections.
     """
+    # Merge with defaults
+    cfg = {**DEFAULT_SETTINGS, **(settings or {})}
+
     # Load audio as mono
     loader = es.MonoLoader(filename=audio_path)
     audio = loader()
@@ -66,22 +84,37 @@ def detect_chords(audio_path: str) -> list:
     frame_size = 8192
     hop_size = 4096
 
-    # Initialize Essentia algorithms
+    # Silence detection threshold from settings
+    silence_threshold = cfg['silenceThreshold']
+
+    # Initialize Essentia algorithms with configurable parameters
     windowing = es.Windowing(type='blackmanharris62')
     spectrum = es.Spectrum()
     spectralPeaks = es.SpectralPeaks(
         orderBy='magnitude',
-        magnitudeThreshold=0.00001,
-        minFrequency=20,
-        maxFrequency=3500,
-        maxPeaks=60
+        magnitudeThreshold=cfg['magnitudeThreshold'],
+        minFrequency=cfg['minFrequency'],
+        maxFrequency=cfg['maxFrequency'],
+        maxPeaks=cfg['maxPeaks']
     )
-    hpcp = es.HPCP()
-    chordsDetection = es.ChordsDetection()
+    hpcp = es.HPCP(
+        size=cfg['hpcpSize'],
+        harmonics=cfg['harmonics'],
+        nonLinear=cfg['nonLinear']
+    )
+    chordsDetection = es.ChordsDetection(
+        windowSize=cfg['windowSize']
+    )
+    rms = es.RMS()
 
-    # Compute HPCP (Harmonic Pitch Class Profile) for each frame
+    # Compute HPCP (Harmonic Pitch Class Profile) and RMS for each frame
     hpcps = []
+    frame_energies = []
     for frame in es.FrameGenerator(audio, frameSize=frame_size, hopSize=hop_size):
+        # Calculate RMS energy for silence detection
+        energy = rms(frame)
+        frame_energies.append(energy)
+
         frame = windowing(frame)
         spec = spectrum(frame)
         peaks_freq, peaks_mag = spectralPeaks(spec)
@@ -94,6 +127,11 @@ def detect_chords(audio_path: str) -> list:
     # Detect chords from HPCP sequence
     hpcp_array = np.array(hpcps)
     chords, strengths = chordsDetection(hpcp_array)
+
+    # Mark silent frames as 'N' (no chord)
+    for i, energy in enumerate(frame_energies):
+        if energy < silence_threshold:
+            chords[i] = 'N'
 
     # Convert to time-based format, merging consecutive same chords
     results = []
@@ -124,35 +162,48 @@ def detect_chords(audio_path: str) -> list:
     return results
 
 
-def detect_chords_beat_sync(audio_path: str, beats: list) -> list:
+def detect_chords_beat_sync(audio_path: str, beats: list, settings: dict = None) -> list:
     """
     Detect chords from an audio file using beat-synchronous analysis.
     Averages HPCP features over each beat period for more stable detection.
+    Includes silence detection to output 'N' (rest) during quiet sections.
     Returns a list of chord events with timestamps aligned to beats.
     """
+    # Merge with defaults
+    cfg = {**DEFAULT_SETTINGS, **(settings or {})}
+
     if not beats or len(beats) < 2:
         # Fall back to standard detection if no beats available
-        return detect_chords(audio_path)
+        return detect_chords(audio_path, settings)
 
     # Load audio as mono
     loader = es.MonoLoader(filename=audio_path)
     audio = loader()
     sample_rate = 44100
 
-    # Initialize Essentia algorithms
+    # Silence detection threshold from settings
+    silence_threshold = cfg['silenceThreshold']
+
+    # Initialize Essentia algorithms with configurable parameters
     windowing = es.Windowing(type='blackmanharris62')
     spectrum = es.Spectrum()
     spectralPeaks = es.SpectralPeaks(
         orderBy='magnitude',
-        magnitudeThreshold=0.00001,
-        minFrequency=20,
-        maxFrequency=3500,
-        maxPeaks=60
+        magnitudeThreshold=cfg['magnitudeThreshold'],
+        minFrequency=cfg['minFrequency'],
+        maxFrequency=cfg['maxFrequency'],
+        maxPeaks=cfg['maxPeaks']
     )
-    hpcp = es.HPCP()
+    hpcp = es.HPCP(
+        size=cfg['hpcpSize'],
+        harmonics=cfg['harmonics'],
+        nonLinear=cfg['nonLinear']
+    )
+    rms = es.RMS()
 
     # Compute one HPCP per beat by averaging frames within each beat
     beat_hpcps = []
+    beat_energies = []
     frame_size = 4096
     hop_size = 1024  # Smaller hop for finer resolution within beats
 
@@ -171,6 +222,10 @@ def detect_chords_beat_sync(audio_path: str, beats: list) -> list:
 
         beat_audio = audio[start_sample:end_sample]
 
+        # Calculate RMS energy for this beat segment
+        beat_energy = rms(beat_audio)
+        beat_energies.append(beat_energy)
+
         # Compute HPCP frames for this beat segment
         frame_hpcps = []
         for frame in es.FrameGenerator(beat_audio, frameSize=min(frame_size, len(beat_audio)), hopSize=hop_size):
@@ -188,12 +243,17 @@ def detect_chords_beat_sync(audio_path: str, beats: list) -> list:
             beat_hpcps.append((beat_start, avg_hpcp))
 
     if not beat_hpcps:
-        return detect_chords(audio_path)
+        return detect_chords(audio_path, settings)
 
     # Detect chords from beat-synchronous HPCP sequence
     hpcp_array = np.array([h[1] for h in beat_hpcps])
-    chordsDetection = es.ChordsDetection()
+    chordsDetection = es.ChordsDetection(windowSize=cfg['windowSize'])
     chords, strengths = chordsDetection(hpcp_array)
+
+    # Mark silent beats as 'N' (no chord)
+    for i, energy in enumerate(beat_energies):
+        if i < len(chords) and energy < silence_threshold:
+            chords[i] = 'N'
 
     # Build chord events aligned to beat times
     results = []
@@ -267,10 +327,11 @@ def parse_chord(chord_str: str) -> dict:
     return {'root': root, 'quality': quality}
 
 
-def analyze_audio(audio_path: str, mode: str = 'standard') -> dict:
+def analyze_audio(audio_path: str, mode: str = 'standard', settings: dict = None) -> dict:
     """
     Complete audio analysis: chords, key, and tempo.
     mode: 'standard' for frame-based, 'beat_sync' for beat-synchronous detection.
+    settings: optional dict with Essentia configuration parameters.
     """
     # Load audio once for all analyses
     loader = es.MonoLoader(filename=audio_path)
@@ -282,9 +343,9 @@ def analyze_audio(audio_path: str, mode: str = 'standard') -> dict:
 
     # Detect chords based on mode
     if mode == 'beat_sync' and tempo_info['beats']:
-        chords = detect_chords_beat_sync(audio_path, tempo_info['beats'])
+        chords = detect_chords_beat_sync(audio_path, tempo_info['beats'], settings)
     else:
-        chords = detect_chords(audio_path)
+        chords = detect_chords(audio_path, settings)
 
     return {
         'chords': chords,
@@ -295,14 +356,22 @@ def analyze_audio(audio_path: str, mode: str = 'standard') -> dict:
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print(json.dumps({'error': 'Usage: detect_chords.py <audio_file_path> [mode]'}))
+        print(json.dumps({'error': 'Usage: detect_chords.py <audio_file_path> [mode] [settings_json]'}))
         sys.exit(1)
 
     audio_path = sys.argv[1]
     mode = sys.argv[2] if len(sys.argv) > 2 else 'standard'
 
+    # Parse settings JSON if provided
+    settings = None
+    if len(sys.argv) > 3:
+        try:
+            settings = json.loads(sys.argv[3])
+        except json.JSONDecodeError:
+            pass  # Use defaults if JSON is invalid
+
     try:
-        analysis = analyze_audio(audio_path, mode)
+        analysis = analyze_audio(audio_path, mode, settings)
         print(json.dumps(analysis))
     except Exception as e:
         print(json.dumps({'error': str(e)}))

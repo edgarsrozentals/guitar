@@ -84,6 +84,25 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     [supabase],
   )
 
+  // Fetch profile when user changes (separate from auth to avoid lock deadlock)
+  useEffect(() => {
+    if (!user) {
+      setProfile(null)
+      return
+    }
+
+    let cancelled = false
+    fetchProfile(user.id).then((userProfile) => {
+      if (!cancelled) {
+        setProfile(userProfile)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user, fetchProfile])
+
   // Initialize auth state
   useEffect(() => {
     let isMounted = true
@@ -106,13 +125,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
         setSession(initialSession)
         setUser(initialSession?.user ?? null)
-
-        if (initialSession?.user) {
-          const userProfile = await fetchProfile(initialSession.user.id)
-          if (isMounted) {
-            setProfile(userProfile)
-          }
-        }
       } catch (error) {
         // Supabase not configured or network error - continue without auth
         console.warn('Auth initialization failed:', error)
@@ -127,23 +139,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     initAuth()
 
     // Listen for auth state changes
+    // IMPORTANT: Do NOT make Supabase REST calls inside this callback.
+    // The callback runs while the auth lock is held, so REST calls
+    // (which need the lock to get the token) will deadlock.
     let subscription: { unsubscribe: () => void } | null = null
     try {
-      const { data } = supabase.auth.onAuthStateChange(
-        async (event, newSession) => {
-          setSession(newSession)
-          setUser(newSession?.user ?? null)
-
-          if (newSession?.user) {
-            const userProfile = await fetchProfile(newSession.user.id)
-            setProfile(userProfile)
-          } else {
-            setProfile(null)
-          }
-
-          setLoading(false)
-        },
-      )
+      const { data } = supabase.auth.onAuthStateChange((_event, newSession) => {
+        setSession(newSession)
+        setUser(newSession?.user ?? null)
+        setLoading(false)
+      })
       subscription = data.subscription
     } catch (error) {
       console.warn('Auth state change listener failed:', error)
@@ -153,7 +158,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       isMounted = false
       subscription?.unsubscribe()
     }
-  }, [supabase, fetchProfile])
+  }, [supabase])
 
   const signIn = useCallback(
     async (email: string, password: string) => {
@@ -214,14 +219,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
 
       try {
-        const {
-          data: { session: currentSession },
-        } = await supabase.auth.getSession()
-
-        if (!currentSession) {
-          return { error: new Error('No active session') }
-        }
-
         const { error } = await supabase
           .from('profiles')
           .upsert(

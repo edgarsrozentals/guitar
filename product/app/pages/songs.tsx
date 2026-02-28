@@ -1,3 +1,3 @@
-import { SongsPage } from '../songs/SongsPage'
+import { SongsGrid } from '../songs/SongsGrid'
 
-export default SongsPage
+export default SongsGrid
