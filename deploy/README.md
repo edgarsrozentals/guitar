@@ -54,6 +54,11 @@ chgrp -R www-data /var/www/guitar-app
 chmod -R g+rX /var/www/guitar-app
 
 # 6. Caddy site block
+# Pre-create the per-site access log file so Caddy (running as user `caddy`)
+# can write to it. Skip this step and Caddy's reload will fail with
+# "permission denied" because root creates the file with mode 0600.
+install -o caddy -g caddy -m 640 /dev/null /var/log/caddy/guitar-app.log
+
 cat /root/guitar-app/deploy/Caddyfile.guitar-app >> /etc/caddy/Caddyfile
 caddy fmt --overwrite /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile
