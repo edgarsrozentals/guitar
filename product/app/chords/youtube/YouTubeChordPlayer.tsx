@@ -7,7 +7,6 @@ import { ChordQuality } from '@product/core/chords/chordTypes'
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import styled from 'styled-components'
 
-import { useAuth } from '../../state/auth/AuthProvider'
 import {
   useSongSettings,
   type StemType,
@@ -31,13 +30,11 @@ const CAGED_SHAPES: CAGEDShapeName[] = ['C', 'A', 'G', 'E', 'D']
 
 import { ChordComparison } from './ChordComparison'
 import { ChordTimeline } from './ChordTimeline'
-import { useSaveToLibrary } from './hooks'
 import { PLAYBACK_RATES } from './PlaybackControls'
-import { SaveToLibraryButton } from './SaveToLibraryButton'
 import { YouTubePlayer, type YouTubePlayerHandle } from './YouTubePlayer'
 import { YouTubeUrlInput } from './YouTubeUrlInput'
 
-const BACKEND_URL = 'http://localhost:4568'
+const BACKEND_URL = ''
 
 type ProcessingStatus = 'idle' | 'loading' | 'processing' | 'ready' | 'error'
 
@@ -1868,16 +1865,8 @@ function getUrlVideoId(): string | null {
 export function YouTubeChordPlayer({
   onKeyDetected,
 }: YouTubeChordPlayerProps = {}) {
-  const { session } = useAuth()
-
-  // Helper to build auth headers for backend requests
-  const getAuthHeaders = useCallback((): Record<string, string> => {
-    const headers: Record<string, string> = {}
-    if (session?.access_token) {
-      headers['Authorization'] = `Bearer ${session.access_token}`
-    }
-    return headers
-  }, [session?.access_token])
+  // Cookie-based auth - browser sends cookie automatically, no headers needed
+  const getAuthHeaders = useCallback((): Record<string, string> => ({}), [])
 
   // Initialize videoId from URL on client
   const [videoId, setVideoId] = useState<string | null>(null)
@@ -2027,24 +2016,6 @@ export function YouTubeChordPlayer({
       document.body.style.userSelect = ''
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
-
-  // Cloud library integration
-  const {
-    isAuthenticated,
-    isSaved,
-    canSave,
-    saveStatus,
-    error: saveError,
-    saveToLibrary,
-  } = useSaveToLibrary({
-    metadata: songData
-      ? {
-          videoId: songData.videoId,
-          title: songData.title,
-          durationSeconds: songData.duration,
-        }
-      : null,
-  })
 
   // Stem audio playback refs
   const stemAudioRefs = useRef<Record<string, HTMLAudioElement>>({})
@@ -4409,14 +4380,6 @@ export function YouTubeChordPlayer({
                 </svg>
               </YouTubeLink>
               <VideoTitle>{songData.title}</VideoTitle>
-              <SaveToLibraryButton
-                isAuthenticated={isAuthenticated}
-                isSaved={isSaved}
-                canSave={canSave}
-                isSaving={saveStatus === 'saving'}
-                error={saveError}
-                onSave={saveToLibrary}
-              />
               {audioUrl && (
                 <DownloadIconButton
                   href={`${BACKEND_URL}${audioUrl}`}

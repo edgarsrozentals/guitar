@@ -8,7 +8,7 @@ import styled from 'styled-components'
 
 import { parseYouTubeUrl } from './utils/parseYouTubeUrl'
 
-const BACKEND_URL = 'http://localhost:4568'
+const BACKEND_URL = ''
 
 type ProcessedSong = {
   videoId: string

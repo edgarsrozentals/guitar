@@ -1,7 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-
-import { getSupabaseBrowserClient } from '../../lib/supabase/client'
-import { useAuth } from '../auth/AuthProvider'
+import { useCallback, useEffect, useState } from 'react'
 
 export type StemType = 'vocals' | 'drum' | 'bass' | 'electric_guitar' | 'piano'
 export type ChordLibrary = 'essentia' | 'madmom' | 'btc' | 'chordify'
@@ -13,43 +10,19 @@ export type MediaTab =
   | 'lyrics'
   | 'fretboard'
 
-// Essentia configuration settings
 export type EssentiaSettings = {
-  // Silence detection
-  silenceThreshold: number // 0.001 - 0.05, default 0.01
-
-  // HPCP settings
-  hpcpSize: number // 12, 36, or 120
-  harmonics: number // 0-8
+  silenceThreshold: number
+  hpcpSize: number
+  harmonics: number
   nonLinear: boolean
-  minFrequency: number // 20-200
-  maxFrequency: number // 2000-5000
-
-  // Chord detection
-  windowSize: number // 1-5 seconds
-
-  // SpectralPeaks
-  maxPeaks: number // 30-100
-  magnitudeThreshold: number // 0.00001 - 0.001
+  minFrequency: number
+  maxFrequency: number
+  windowSize: number
+  maxPeaks: number
+  magnitudeThreshold: number
 }
 
-// Hidden timelines
 export type HiddenTimelines = Record<ChordLibrary, boolean>
-
-type SongSettingsRow = {
-  active_tab: string
-  selected_stems: string[]
-  stem_volumes: Record<string, number>
-  stem_muted: Record<string, boolean>
-  master_stems_volume: number
-  active_library: string
-  enabled_libraries: string[]
-  use_backing_track: boolean
-  snap_to_beats: boolean
-  use_beat_sync_detection: boolean
-  essentia_settings: EssentiaSettings | null
-  hidden_timelines: HiddenTimelines | null
-}
 
 export type SongSettings = {
   activeTab: MediaTab
@@ -143,209 +116,145 @@ type UseSongSettingsReturn = {
   loading: boolean
 }
 
+const STORAGE_KEY_PREFIX = 'guitar-app:songSettings:'
+
+type StoredSettings = Omit<
+  SongSettings,
+  'selectedStems' | 'enabledLibraries'
+> & {
+  selectedStems: StemType[]
+  enabledLibraries: ChordLibrary[]
+}
+
+function storageKey(videoId: string): string {
+  return `${STORAGE_KEY_PREFIX}${videoId}`
+}
+
+function load(videoId: string): SongSettings {
+  if (typeof window === 'undefined') return DEFAULT_SONG_SETTINGS
+  try {
+    const raw = window.localStorage.getItem(storageKey(videoId))
+    if (!raw) return DEFAULT_SONG_SETTINGS
+    const parsed = JSON.parse(raw) as Partial<StoredSettings>
+    return {
+      activeTab:
+        (parsed.activeTab as MediaTab) || DEFAULT_SONG_SETTINGS.activeTab,
+      selectedStems: new Set(
+        (parsed.selectedStems as StemType[]) || ALL_STEM_TYPES,
+      ),
+      stemVolumes: parsed.stemVolumes || DEFAULT_STEM_VOLUMES,
+      stemMuted: parsed.stemMuted || DEFAULT_STEM_MUTED,
+      masterStemsVolume:
+        parsed.masterStemsVolume ?? DEFAULT_SONG_SETTINGS.masterStemsVolume,
+      activeLibrary:
+        (parsed.activeLibrary as ChordLibrary) ||
+        DEFAULT_SONG_SETTINGS.activeLibrary,
+      enabledLibraries: new Set(
+        (parsed.enabledLibraries as ChordLibrary[]) || ['essentia', 'chordify'],
+      ),
+      useBackingTrack: parsed.useBackingTrack ?? false,
+      snapToBeats: parsed.snapToBeats ?? false,
+      useBeatSyncDetection: parsed.useBeatSyncDetection ?? false,
+      essentiaSettings: parsed.essentiaSettings || DEFAULT_ESSENTIA_SETTINGS,
+      hiddenTimelines: parsed.hiddenTimelines || DEFAULT_HIDDEN_TIMELINES,
+    }
+  } catch {
+    return DEFAULT_SONG_SETTINGS
+  }
+}
+
+function save(videoId: string, settings: SongSettings): void {
+  if (typeof window === 'undefined') return
+  try {
+    const stored: StoredSettings = {
+      ...settings,
+      selectedStems: Array.from(settings.selectedStems),
+      enabledLibraries: Array.from(settings.enabledLibraries),
+    }
+    window.localStorage.setItem(storageKey(videoId), JSON.stringify(stored))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function useSongSettings(videoId: string | null): UseSongSettingsReturn {
-  const { user } = useAuth()
   const [settings, setSettings] = useState<SongSettings>(DEFAULT_SONG_SETTINGS)
   const [loading, setLoading] = useState(true)
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const supabase = getSupabaseBrowserClient()
 
-  // Load settings from database
   useEffect(() => {
-    const loadSettings = async () => {
-      if (!user || !videoId) {
-        setSettings(DEFAULT_SONG_SETTINGS)
-        setLoading(false)
-        return
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from('song_settings')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('video_id', videoId)
-          .single()
-
-        if (error) {
-          if (error.code === 'PGRST116') {
-            // No row exists, use defaults
-            setSettings(DEFAULT_SONG_SETTINGS)
-          } else {
-            console.error('Error loading song settings:', error)
-          }
-        } else if (data) {
-          const row = data as unknown as SongSettingsRow
-          setSettings({
-            activeTab: row.active_tab as MediaTab,
-            selectedStems: new Set(row.selected_stems as StemType[]),
-            stemVolumes: row.stem_volumes,
-            stemMuted: row.stem_muted,
-            masterStemsVolume: row.master_stems_volume,
-            activeLibrary: row.active_library as ChordLibrary,
-            enabledLibraries: new Set(row.enabled_libraries as ChordLibrary[]),
-            useBackingTrack: row.use_backing_track,
-            snapToBeats: row.snap_to_beats,
-            useBeatSyncDetection: row.use_beat_sync_detection,
-            essentiaSettings:
-              row.essentia_settings || DEFAULT_ESSENTIA_SETTINGS,
-            hiddenTimelines: row.hidden_timelines || DEFAULT_HIDDEN_TIMELINES,
-          })
-        }
-      } catch (err) {
-        console.error('Error loading song settings:', err)
-      } finally {
-        setLoading(false)
-      }
+    if (!videoId) {
+      setSettings(DEFAULT_SONG_SETTINGS)
+      setLoading(false)
+      return
     }
-
-    loadSettings()
-  }, [user, videoId, supabase])
-
-  // Save settings to database (debounced)
-  const saveSettings = useCallback(
-    async (newSettings: SongSettings) => {
-      if (!user || !videoId) return
-
-      try {
-        const { error } = await supabase.from('song_settings').upsert(
-          {
-            user_id: user.id,
-            video_id: videoId,
-            active_tab: newSettings.activeTab,
-            selected_stems: Array.from(newSettings.selectedStems),
-            stem_volumes: newSettings.stemVolumes,
-            stem_muted: newSettings.stemMuted,
-            master_stems_volume: newSettings.masterStemsVolume,
-            active_library: newSettings.activeLibrary,
-            enabled_libraries: Array.from(newSettings.enabledLibraries),
-            use_backing_track: newSettings.useBackingTrack,
-            snap_to_beats: newSettings.snapToBeats,
-            use_beat_sync_detection: newSettings.useBeatSyncDetection,
-            essentia_settings: newSettings.essentiaSettings,
-            hidden_timelines: newSettings.hiddenTimelines,
-            updated_at: new Date().toISOString(),
-            last_accessed: new Date().toISOString(),
-          } as any,
-          { onConflict: 'user_id,video_id' },
-        )
-
-        if (error) {
-          console.error('Error saving song settings:', error)
-        }
-      } catch (err) {
-        console.error('Error saving song settings:', err)
-      }
-    },
-    [user, videoId, supabase],
-  )
+    setSettings(load(videoId))
+    setLoading(false)
+  }, [videoId])
 
   const updateSettings = useCallback(
     (updates: Partial<SongSettings>) => {
       setSettings((prev) => {
         const updated = { ...prev, ...updates }
-
-        // Debounced save to database
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current)
-        }
-        saveTimeoutRef.current = setTimeout(() => {
-          saveSettings(updated)
-        }, 500)
-
+        if (videoId) save(videoId, updated)
         return updated
       })
     },
-    [saveSettings],
-  )
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current)
-      }
-    }
-  }, [])
-
-  // Individual setters
-  const setActiveTab = useCallback(
-    (tab: MediaTab) => updateSettings({ activeTab: tab }),
-    [updateSettings],
-  )
-
-  const setSelectedStems = useCallback(
-    (stems: Set<StemType>) => updateSettings({ selectedStems: stems }),
-    [updateSettings],
-  )
-
-  const setStemVolumes = useCallback(
-    (volumes: Record<string, number>) =>
-      updateSettings({ stemVolumes: volumes }),
-    [updateSettings],
-  )
-
-  const setStemMuted = useCallback(
-    (muted: Record<string, boolean>) => updateSettings({ stemMuted: muted }),
-    [updateSettings],
-  )
-
-  const setMasterStemsVolume = useCallback(
-    (volume: number) => updateSettings({ masterStemsVolume: volume }),
-    [updateSettings],
-  )
-
-  const setActiveLibrary = useCallback(
-    (library: ChordLibrary) => updateSettings({ activeLibrary: library }),
-    [updateSettings],
-  )
-
-  const setEnabledLibraries = useCallback(
-    (libraries: Set<ChordLibrary>) =>
-      updateSettings({ enabledLibraries: libraries }),
-    [updateSettings],
-  )
-
-  const setUseBackingTrack = useCallback(
-    (use: boolean) => updateSettings({ useBackingTrack: use }),
-    [updateSettings],
-  )
-
-  const setSnapToBeats = useCallback(
-    (snap: boolean) => updateSettings({ snapToBeats: snap }),
-    [updateSettings],
-  )
-
-  const setUseBeatSyncDetection = useCallback(
-    (use: boolean) => updateSettings({ useBeatSyncDetection: use }),
-    [updateSettings],
-  )
-
-  const setEssentiaSettings = useCallback(
-    (essentiaSettings: EssentiaSettings) =>
-      updateSettings({ essentiaSettings }),
-    [updateSettings],
-  )
-
-  const setHiddenTimelines = useCallback(
-    (hiddenTimelines: HiddenTimelines) => updateSettings({ hiddenTimelines }),
-    [updateSettings],
+    [videoId],
   )
 
   return {
     settings,
-    setActiveTab,
-    setSelectedStems,
-    setStemVolumes,
-    setStemMuted,
-    setMasterStemsVolume,
-    setActiveLibrary,
-    setEnabledLibraries,
-    setUseBackingTrack,
-    setSnapToBeats,
-    setUseBeatSyncDetection,
-    setEssentiaSettings,
-    setHiddenTimelines,
+    setActiveTab: useCallback(
+      (tab: MediaTab) => updateSettings({ activeTab: tab }),
+      [updateSettings],
+    ),
+    setSelectedStems: useCallback(
+      (stems: Set<StemType>) => updateSettings({ selectedStems: stems }),
+      [updateSettings],
+    ),
+    setStemVolumes: useCallback(
+      (volumes: Record<string, number>) =>
+        updateSettings({ stemVolumes: volumes }),
+      [updateSettings],
+    ),
+    setStemMuted: useCallback(
+      (muted: Record<string, boolean>) => updateSettings({ stemMuted: muted }),
+      [updateSettings],
+    ),
+    setMasterStemsVolume: useCallback(
+      (volume: number) => updateSettings({ masterStemsVolume: volume }),
+      [updateSettings],
+    ),
+    setActiveLibrary: useCallback(
+      (library: ChordLibrary) => updateSettings({ activeLibrary: library }),
+      [updateSettings],
+    ),
+    setEnabledLibraries: useCallback(
+      (libraries: Set<ChordLibrary>) =>
+        updateSettings({ enabledLibraries: libraries }),
+      [updateSettings],
+    ),
+    setUseBackingTrack: useCallback(
+      (use: boolean) => updateSettings({ useBackingTrack: use }),
+      [updateSettings],
+    ),
+    setSnapToBeats: useCallback(
+      (snap: boolean) => updateSettings({ snapToBeats: snap }),
+      [updateSettings],
+    ),
+    setUseBeatSyncDetection: useCallback(
+      (use: boolean) => updateSettings({ useBeatSyncDetection: use }),
+      [updateSettings],
+    ),
+    setEssentiaSettings: useCallback(
+      (essentiaSettings: EssentiaSettings) =>
+        updateSettings({ essentiaSettings }),
+      [updateSettings],
+    ),
+    setHiddenTimelines: useCallback(
+      (hiddenTimelines: HiddenTimelines) => updateSettings({ hiddenTimelines }),
+      [updateSettings],
+    ),
     loading,
   }
 }

@@ -1,8 +1,5 @@
 import { CAGEDShapeName } from '@product/core/chords/cagedShapes'
-import { useCallback, useEffect, useRef, useState } from 'react'
-
-import { getSupabaseBrowserClient } from '../../lib/supabase/client'
-import { useAuth } from '../auth/AuthProvider'
+import { useCallback, useEffect, useState } from 'react'
 
 export type UserPreferences = {
   enabledShapes: Set<CAGEDShapeName>
@@ -10,14 +7,6 @@ export type UserPreferences = {
   highlightRoots: boolean
   colorByShape: boolean
   colorByPosition: boolean
-}
-
-type UserPreferencesRow = {
-  enabled_shapes: string[]
-  show_all_positions: boolean
-  highlight_roots: boolean
-  color_by_shape: boolean
-  color_by_position: boolean
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -28,6 +17,54 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   colorByPosition: false,
 }
 
+const STORAGE_KEY = 'guitar-app:userPreferences'
+
+type StoredPreferences = {
+  enabledShapes: string[]
+  showAllPositions: boolean
+  highlightRoots: boolean
+  colorByShape: boolean
+  colorByPosition: boolean
+}
+
+function load(): UserPreferences {
+  if (typeof window === 'undefined') return DEFAULT_PREFERENCES
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return DEFAULT_PREFERENCES
+    const parsed = JSON.parse(raw) as Partial<StoredPreferences>
+    const fallbackShapes: CAGEDShapeName[] = ['A', 'E', 'D']
+    return {
+      enabledShapes: new Set<CAGEDShapeName>(
+        (parsed.enabledShapes as CAGEDShapeName[] | undefined) ||
+          fallbackShapes,
+      ),
+      showAllPositions: parsed.showAllPositions ?? true,
+      highlightRoots: parsed.highlightRoots ?? false,
+      colorByShape: parsed.colorByShape ?? true,
+      colorByPosition: parsed.colorByPosition ?? false,
+    }
+  } catch {
+    return DEFAULT_PREFERENCES
+  }
+}
+
+function save(prefs: UserPreferences): void {
+  if (typeof window === 'undefined') return
+  try {
+    const stored: StoredPreferences = {
+      enabledShapes: Array.from(prefs.enabledShapes),
+      showAllPositions: prefs.showAllPositions,
+      highlightRoots: prefs.highlightRoots,
+      colorByShape: prefs.colorByShape,
+      colorByPosition: prefs.colorByPosition,
+    }
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
+  } catch {
+    // Ignore storage errors (quota, private browsing)
+  }
+}
+
 type UseUserPreferencesReturn = {
   preferences: UserPreferences
   updatePreferences: (updates: Partial<UserPreferences>) => void
@@ -35,116 +72,22 @@ type UseUserPreferencesReturn = {
 }
 
 export function useUserPreferences(): UseUserPreferencesReturn {
-  const { user } = useAuth()
   const [preferences, setPreferences] =
     useState<UserPreferences>(DEFAULT_PREFERENCES)
   const [loading, setLoading] = useState(true)
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const supabase = getSupabaseBrowserClient()
 
-  // Load preferences from database
   useEffect(() => {
-    const loadPreferences = async () => {
-      if (!user) {
-        setPreferences(DEFAULT_PREFERENCES)
-        setLoading(false)
-        return
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from('user_preferences')
-          .select('*')
-          .eq('user_id', user.id)
-          .single()
-
-        if (error) {
-          if (error.code === 'PGRST116') {
-            // No row exists, use defaults
-            setPreferences(DEFAULT_PREFERENCES)
-          } else {
-            console.error('Error loading preferences:', error)
-          }
-        } else if (data) {
-          const row = data as unknown as UserPreferencesRow
-          setPreferences({
-            enabledShapes: new Set(row.enabled_shapes as CAGEDShapeName[]),
-            showAllPositions: row.show_all_positions,
-            highlightRoots: row.highlight_roots,
-            colorByShape: row.color_by_shape,
-            colorByPosition: row.color_by_position,
-          })
-        }
-      } catch (err) {
-        console.error('Error loading preferences:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadPreferences()
-  }, [user, supabase])
-
-  // Save preferences to database (debounced)
-  const savePreferences = useCallback(
-    async (prefs: UserPreferences) => {
-      if (!user) return
-
-      try {
-        const { error } = await supabase.from('user_preferences').upsert(
-          {
-            user_id: user.id,
-            enabled_shapes: Array.from(prefs.enabledShapes),
-            show_all_positions: prefs.showAllPositions,
-            highlight_roots: prefs.highlightRoots,
-            color_by_shape: prefs.colorByShape,
-            color_by_position: prefs.colorByPosition,
-            updated_at: new Date().toISOString(),
-          } as any,
-          { onConflict: 'user_id' },
-        )
-
-        if (error) {
-          console.error('Error saving preferences:', error)
-        }
-      } catch (err) {
-        console.error('Error saving preferences:', err)
-      }
-    },
-    [user, supabase],
-  )
-
-  const updatePreferences = useCallback(
-    (updates: Partial<UserPreferences>) => {
-      setPreferences((prev) => {
-        const updated = { ...prev, ...updates }
-
-        // Debounced save to database
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current)
-        }
-        saveTimeoutRef.current = setTimeout(() => {
-          savePreferences(updated)
-        }, 500)
-
-        return updated
-      })
-    },
-    [savePreferences],
-  )
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current)
-      }
-    }
+    setPreferences(load())
+    setLoading(false)
   }, [])
 
-  return {
-    preferences,
-    updatePreferences,
-    loading,
-  }
+  const updatePreferences = useCallback((updates: Partial<UserPreferences>) => {
+    setPreferences((prev) => {
+      const updated = { ...prev, ...updates }
+      save(updated)
+      return updated
+    })
+  }, [])
+
+  return { preferences, updatePreferences, loading }
 }

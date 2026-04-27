@@ -1,167 +1,66 @@
-import { getSupabaseAdmin } from '../lib/supabase'
+import { Request, Response, NextFunction } from 'express'
 
-import type { Request, Response, NextFunction } from 'express'
+import { getDb } from '../db'
+import { AUTH_COOKIE_NAME, verifyAuthToken } from '../lib/auth'
 
-// Import Express types extension
 import '../types/express'
 
-/**
- * Authentication middleware that validates Supabase JWT tokens.
- *
- * Extracts the Bearer token from the Authorization header,
- * validates it with Supabase, and attaches user info to req.user.
- *
- * Returns 401 if:
- * - No Authorization header present
- * - Token is invalid or expired
- * - Supabase is not configured
- */
-export const authMiddleware = async (
+async function loadUserFromRequest(
   req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> => {
-  try {
-    const supabase = getSupabaseAdmin()
+): Promise<{ id: string; email: string; isAdmin: boolean } | null> {
+  const token = req.cookies?.[AUTH_COOKIE_NAME]
+  if (!token) return null
 
-    if (!supabase) {
-      res.status(503).json({
-        error: 'Authentication service unavailable',
-        code: 'AUTH_SERVICE_UNAVAILABLE',
-      })
-      return
-    }
+  const claims = await verifyAuthToken(token)
+  if (!claims) return null
 
-    const authHeader = req.headers.authorization
+  const row = await getDb()
+    .selectFrom('app_users')
+    .select(['id', 'email', 'is_admin'])
+    .where('id', '=', claims.sub)
+    .executeTakeFirst()
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({
-        error: 'Authentication required',
-        code: 'AUTH_REQUIRED',
-      })
-      return
-    }
-
-    const token = authHeader.substring(7)
-
-    // Validate token with Supabase
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser(token)
-
-    if (error || !user) {
-      // Check if it's an expiration error
-      if (error?.message?.toLowerCase().includes('expired')) {
-        res.status(401).json({
-          error: 'Token expired',
-          code: 'AUTH_TOKEN_EXPIRED',
-        })
-        return
-      }
-
-      res.status(401).json({
-        error: 'Invalid token',
-        code: 'AUTH_TOKEN_INVALID',
-      })
-      return
-    }
-
-    // Attach user to request
-    req.user = {
-      id: user.id,
-      email: user.email,
-      metadata: user.user_metadata,
-    }
-
-    next()
-  } catch (error) {
-    console.error('Auth middleware error:', error)
-    res.status(500).json({
-      error: 'Authentication error',
-      code: 'AUTH_ERROR',
-    })
-  }
+  if (!row) return null
+  return { id: row.id, email: row.email, isAdmin: row.is_admin }
 }
 
-/**
- * Optional authentication middleware.
- *
- * Similar to authMiddleware but doesn't fail if no token is present.
- * Useful for endpoints that can work both authenticated and unauthenticated
- * (e.g., demo songs that are public but user songs that are private).
- *
- * Sets req.user to null if not authenticated.
- */
-export const optionalAuth = async (
+export async function optionalAuth(
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction,
-): Promise<void> => {
-  const authHeader = req.headers.authorization
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    req.user = null
-    next()
-    return
-  }
-
-  try {
-    const supabase = getSupabaseAdmin()
-
-    if (!supabase) {
-      req.user = null
-      next()
-      return
-    }
-
-    const token = authHeader.substring(7)
-    const {
-      data: { user },
-    } = await supabase.auth.getUser(token)
-
-    req.user = user
-      ? {
-          id: user.id,
-          email: user.email,
-          metadata: user.user_metadata,
-        }
-      : null
-  } catch {
-    req.user = null
-  }
-
+): Promise<void> {
+  req.user = await loadUserFromRequest(req)
   next()
 }
 
-/**
- * Require user to be authenticated and match the userId param.
- *
- * Use this for routes like /api/users/:userId/songs where
- * the user should only access their own resources.
- */
-export const requireOwnUser = async (
+export async function requireAuth(
   req: Request,
   res: Response,
   next: NextFunction,
-): Promise<void> => {
-  // First run auth middleware
-  await authMiddleware(req, res, () => {
-    const { userId } = req.params
+): Promise<void> {
+  const user = await loadUserFromRequest(req)
+  if (!user) {
+    res.status(401).json({ error: 'Authentication required' })
+    return
+  }
+  req.user = user
+  next()
+}
 
-    if (!req.user) {
-      // authMiddleware already sent 401
-      return
-    }
-
-    if (userId && req.user.id !== userId) {
-      res.status(403).json({
-        error: 'Access denied to requested resource',
-        code: 'ACCESS_DENIED',
-      })
-      return
-    }
-
-    next()
-  })
+export async function requireAdmin(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const user = await loadUserFromRequest(req)
+  if (!user) {
+    res.status(401).json({ error: 'Authentication required' })
+    return
+  }
+  if (!user.isAdmin) {
+    res.status(403).json({ error: 'Admin access required' })
+    return
+  }
+  req.user = user
+  next()
 }

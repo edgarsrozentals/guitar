@@ -4,20 +4,20 @@ import path from 'path'
 import { promisify } from 'util'
 
 import { AssemblyAI } from 'assemblyai'
+import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
 
+import { closeDb } from './db'
 import { createLalalAIClient, LalalAIClient, StemType } from './lalalai'
 import { getUserApiKey } from './lib/apiKeys'
-import { isSupabaseConfigured } from './lib/supabase'
-import { optionalAuth } from './middleware/auth'
-import {
-  userSongsRouter,
-  userSongChordsRouter,
-  userSongStemsRouter,
-  userSongLyricsRouter,
-} from './routes'
+import { runMigrations } from './lib/migrate'
+import { bootstrapAdminIfEmpty } from './lib/userBootstrap'
+import { requireAuth, optionalAuth } from './middleware/auth'
+import adminRouter from './routes/admin'
+import authRouter from './routes/auth'
+import profileRouter from './routes/profile'
 
 // Load environment variables from root .env file
 dotenv.config({ path: path.join(__dirname, '..', '..', '.env') })
@@ -27,8 +27,16 @@ const execAsync = promisify(exec)
 const app = express()
 const PORT = 4568
 
-app.use(cors())
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:4567'
+
+app.use(
+  cors({
+    origin: FRONTEND_ORIGIN,
+    credentials: true,
+  }),
+)
 app.use(express.json({ limit: '5mb' }))
+app.use(cookieParser())
 
 // Directory to store extracted audio files
 const AUDIO_DIR = path.join(__dirname, '..', 'audio')
@@ -411,29 +419,26 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
 
 // API Routes
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    supabase: isSupabaseConfigured(),
-  })
+// Health check (unauthenticated)
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
 // ============================================
-// CLOUD STORAGE ROUTES (Supabase)
-// These routes require authentication and store data in Supabase
+// AUTH ROUTES (no auth required for login)
 // ============================================
 
-app.use('/api/user-songs', userSongsRouter)
-app.use('/api/user-songs', userSongChordsRouter)
-app.use('/api/user-songs', userSongStemsRouter)
-app.use('/api/user-songs', userSongLyricsRouter)
+app.use('/api/auth', authRouter)
 
-// ============================================
-// LEGACY LOCAL STORAGE ROUTES
-// These routes use local file storage (to be deprecated after migration)
-// ============================================
+// All routes below require authentication
+app.use('/api/profile', profileRouter)
+app.use('/api/admin', adminRouter)
+
+// Gate all /api/songs/* and /api/lyrics/* routes
+app.use('/api/songs', requireAuth)
+app.use('/api/lyrics', requireAuth)
+app.use('/api/chord-libraries', requireAuth)
+app.use('/api/stems', requireAuth)
 
 // List all processed songs
 app.get('/api/songs', (req, res) => {
@@ -1984,17 +1989,18 @@ async function generateLyrics(
   }
 }
 
-// Serve extracted audio files
-app.use('/audio', express.static(AUDIO_DIR))
+// Serve extracted audio files (auth-gated)
+app.use('/audio', requireAuth, express.static(AUDIO_DIR))
 
-// Serve separated stem files
-app.use('/stems', express.static(STEMS_DIR))
+// Serve separated stem files (auth-gated)
+app.use('/stems', requireAuth, express.static(STEMS_DIR))
 
-// Serve lyrics files
-app.use('/lyrics', express.static(LYRICS_DIR))
+// Serve lyrics files (auth-gated)
+app.use('/lyrics', requireAuth, express.static(LYRICS_DIR))
 
-// Only start the server if this file is run directly (not imported for testing)
-if (process.env.NODE_ENV !== 'test') {
+async function startServer(): Promise<void> {
+  await runMigrations()
+  await bootstrapAdminIfEmpty()
   app.listen(PORT, () => {
     console.log(`Backend server running at http://localhost:${PORT}`)
     console.log(`Audio files directory: ${AUDIO_DIR}`)
@@ -2006,6 +2012,13 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(
       `AssemblyAI API: ${ENV_ASSEMBLYAI_API_KEY ? 'Env key configured' : 'No env key (user keys supported via Profile)'}`,
     )
+  })
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  startServer().catch((error) => {
+    console.error('Failed to start server:', error)
+    closeDb().finally(() => process.exit(1))
   })
 }
 

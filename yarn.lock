@@ -1176,8 +1176,6 @@ __metadata:
     "@emoji-mart/data": "npm:^1.2.1"
     "@emoji-mart/react": "npm:^1.1.1"
     "@next/eslint-plugin-next": "npm:^15.2.3"
-    "@supabase/ssr": "npm:^0.8.0"
-    "@supabase/supabase-js": "npm:^2.89.0"
     "@tanstack/react-query": "npm:^5.68.0"
     "@types/node": "npm:^22.13.10"
     "@types/react": "npm:^19.0.11"
@@ -1456,17 +1454,6 @@ __metadata:
     typescript: "npm:^5.8.2"
   languageName: unknown
   linkType: soft
-
-"@supabase/ssr@npm:^0.8.0":
-  version: 0.8.0
-  resolution: "@supabase/ssr@npm:0.8.0"
-  dependencies:
-    cookie: "npm:^1.0.2"
-  peerDependencies:
-    "@supabase/supabase-js": ^2.76.1
-  checksum: 10/db03236c12de8b15d279c0f24cf3a0432e50ed5e44c4eae0e42ec10a46b246a6aa55358051fabb2716b660ebb680bb9616d87afc58cff12a884992331bccb4ff
-  languageName: node
-  linkType: hard
 
 "@supabase/storage-js@npm:2.89.0":
   version: 2.89.0
@@ -1882,6 +1869,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/bcryptjs@npm:^3.0.0":
+  version: 3.0.0
+  resolution: "@types/bcryptjs@npm:3.0.0"
+  dependencies:
+    bcryptjs: "npm:*"
+  checksum: 10/15fcb37f90ff9726b436bad453248402c6a6d6c0f1b9689faf2c0c0f0f5eab519e04b34848c99ea7603821a07cd494df995bec29f020130665133570b5a5185e
+  languageName: node
+  linkType: hard
+
 "@types/body-parser@npm:*":
   version: 1.19.6
   resolution: "@types/body-parser@npm:1.19.6"
@@ -1908,6 +1904,15 @@ __metadata:
   dependencies:
     "@types/node": "npm:*"
   checksum: 10/7eb1bc5342a9604facd57598a6c62621e244822442976c443efb84ff745246b10d06e8b309b6e80130026a396f19bf6793b7cecd7380169f369dac3bfc46fb99
+  languageName: node
+  linkType: hard
+
+"@types/cookie-parser@npm:^1.4.10":
+  version: 1.4.10
+  resolution: "@types/cookie-parser@npm:1.4.10"
+  peerDependencies:
+    "@types/express": "*"
+  checksum: 10/1f37b5a4115dbfd4b7bbea2d874fbf9495eca8c3e8c87fa7e38c50f9fff66222377c911cfdc7a1ea08855e822919c5534ebbcc4bf25b596bc6f7270e403483d9
   languageName: node
   linkType: hard
 
@@ -2038,6 +2043,17 @@ __metadata:
   version: 2.4.4
   resolution: "@types/normalize-package-data@npm:2.4.4"
   checksum: 10/65dff72b543997b7be8b0265eca7ace0e34b75c3e5fee31de11179d08fa7124a7a5587265d53d0409532ecb7f7fba662c2012807963e1f9b059653ec2c83ee05
+  languageName: node
+  linkType: hard
+
+"@types/pg@npm:^8.20.0":
+  version: 8.20.0
+  resolution: "@types/pg@npm:8.20.0"
+  dependencies:
+    "@types/node": "npm:*"
+    pg-protocol: "npm:*"
+    pg-types: "npm:^2.2.0"
+  checksum: 10/3fb5be6e02de5c1a519acfbcb73647864e0d118bd09d0dea9b02091992095094e1ba150454c1175fd0127a596947e7216e15ff9b6162cd7792b62effce6aa751
   languageName: node
   linkType: hard
 
@@ -2998,6 +3014,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"bcryptjs@npm:*, bcryptjs@npm:^3.0.3":
+  version: 3.0.3
+  resolution: "bcryptjs@npm:3.0.3"
+  bin:
+    bcrypt: bin/bcrypt
+  checksum: 10/c24c2b02d2156be4a2842752526ffcc48eb49f6c5c1271765d10f6f847eb40005716f0b910df8c04811fb5223ba9b80b84223c2a6f0a346584df9be2c44e2d14
+  languageName: node
+  linkType: hard
+
 "bl@npm:^4.0.3":
   version: 4.1.0
   resolution: "bl@npm:4.1.0"
@@ -3489,6 +3514,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"cookie-parser@npm:^1.4.7":
+  version: 1.4.7
+  resolution: "cookie-parser@npm:1.4.7"
+  dependencies:
+    cookie: "npm:0.7.2"
+    cookie-signature: "npm:1.0.6"
+  checksum: 10/243fa13f217e793d20a57675e6552beea08c5989fcc68495d543997a31646875335e0e82d687b42dcfd466df57891d22bae7f5ba6ab33b7705ed2dd6eb989105
+  languageName: node
+  linkType: hard
+
+"cookie-signature@npm:1.0.6":
+  version: 1.0.6
+  resolution: "cookie-signature@npm:1.0.6"
+  checksum: 10/f4e1b0a98a27a0e6e66fd7ea4e4e9d8e038f624058371bf4499cfcd8f3980be9a121486995202ba3fca74fbed93a407d6d54d43a43f96fd28d0bd7a06761591a
+  languageName: node
+  linkType: hard
+
 "cookie-signature@npm:~1.0.6":
   version: 1.0.7
   resolution: "cookie-signature@npm:1.0.7"
@@ -3496,14 +3538,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"cookie@npm:^1.0.2":
-  version: 1.1.1
-  resolution: "cookie@npm:1.1.1"
-  checksum: 10/85538153054791155cf4d38d2e807e3b9382d71bf71d92fc46fca348515ea574049d0d9ef8eb84d2d54a681ad1d7a7316b1989b901dace50a6c0f4c3858dbdb2
-  languageName: node
-  linkType: hard
-
-"cookie@npm:~0.7.1":
+"cookie@npm:0.7.2, cookie@npm:~0.7.1":
   version: 0.7.2
   resolution: "cookie@npm:0.7.2"
   checksum: 10/24b286c556420d4ba4e9bc09120c9d3db7d28ace2bd0f8ccee82422ce42322f73c8312441271e5eefafbead725980e5996cc02766dbb89a90ac7f5636ede608f
@@ -5326,17 +5361,24 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "guitar-app-backend@workspace:backend"
   dependencies:
-    "@supabase/supabase-js": "npm:^2.89.0"
+    "@types/bcryptjs": "npm:^3.0.0"
+    "@types/cookie-parser": "npm:^1.4.10"
     "@types/cors": "npm:^2.8.17"
     "@types/express": "npm:^4.17.21"
     "@types/node": "npm:^20.10.0"
+    "@types/pg": "npm:^8.20.0"
     "@types/supertest": "npm:^6.0.3"
     "@vitest/coverage-v8": "npm:^4.0.16"
     assemblyai: "npm:^4.22.1"
+    bcryptjs: "npm:^3.0.3"
     cheerio: "npm:^1.1.2"
+    cookie-parser: "npm:^1.4.7"
     cors: "npm:^2.8.5"
     dotenv: "npm:^17.2.3"
     express: "npm:^4.18.2"
+    jose: "npm:^6.2.2"
+    kysely: "npm:^0.28.16"
+    pg: "npm:^8.20.0"
     puppeteer: "npm:^24.34.0"
     puppeteer-core: "npm:^24.34.0"
     supertest: "npm:^7.1.4"
@@ -6084,6 +6126,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"jose@npm:^6.2.2":
+  version: 6.2.2
+  resolution: "jose@npm:6.2.2"
+  checksum: 10/fd66f24916d2507dbde0ca77ede86377e7d7eae42c7f94db0dfd014b0c6ce5041365dc8e757a44e54cd7606ea5e9c757aa544b51e55cb8a736e83320db1b8258
+  languageName: node
+  linkType: hard
+
 "js-beautify@npm:^1.6.12":
   version: 1.15.4
   resolution: "js-beautify@npm:1.15.4"
@@ -6238,6 +6287,13 @@ __metadata:
   version: 3.0.3
   resolution: "kleur@npm:3.0.3"
   checksum: 10/0c0ecaf00a5c6173d25059c7db2113850b5457016dfa1d0e3ef26da4704fbb186b4938d7611246d86f0ddf1bccf26828daa5877b1f232a65e7373d0122a83e7f
+  languageName: node
+  linkType: hard
+
+"kysely@npm:^0.28.16":
+  version: 0.28.16
+  resolution: "kysely@npm:0.28.16"
+  checksum: 10/d0dffee9158a62103f61559588fffd7b34e01a1adf4f054599c3be50c10c6357cda09de456a931fd7eba6502cbb8804710805bbd56e6d94b19633e043cde3e31
   languageName: node
   linkType: hard
 
@@ -7483,6 +7539,87 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"pg-cloudflare@npm:^1.3.0":
+  version: 1.3.0
+  resolution: "pg-cloudflare@npm:1.3.0"
+  checksum: 10/04007ebbd314bdc8e5983d5d0f71a942f1915d2312ed84894d55475010559665bcbb9941d55523d36be6386cd83490dffb5b1ea98ffbbc82a140ef5dfb68ab8d
+  languageName: node
+  linkType: hard
+
+"pg-connection-string@npm:^2.12.0":
+  version: 2.12.0
+  resolution: "pg-connection-string@npm:2.12.0"
+  checksum: 10/03e5462c1f4da57166344a9eae105f95af6887a501dfe4ca2feb85ca8d351162afe9fc581cb27d44ecdaecc59a8bd55a1ec35b66714b01a9db148f0a91c0b36c
+  languageName: node
+  linkType: hard
+
+"pg-int8@npm:1.0.1":
+  version: 1.0.1
+  resolution: "pg-int8@npm:1.0.1"
+  checksum: 10/a1e3a05a69005ddb73e5f324b6b4e689868a447c5fa280b44cd4d04e6916a344ac289e0b8d2695d66e8e89a7fba023affb9e0e94778770ada5df43f003d664c9
+  languageName: node
+  linkType: hard
+
+"pg-pool@npm:^3.13.0":
+  version: 3.13.0
+  resolution: "pg-pool@npm:3.13.0"
+  peerDependencies:
+    pg: ">=8.0"
+  checksum: 10/0addd11b3f3f49fb1d16bf181583411e8a9809730dbfc5edb9bbf5110bc02beb4ac346c52a121f446ff76bcd420a76a3409952ea743aa5f6a04705ea953bd8aa
+  languageName: node
+  linkType: hard
+
+"pg-protocol@npm:*, pg-protocol@npm:^1.13.0":
+  version: 1.13.0
+  resolution: "pg-protocol@npm:1.13.0"
+  checksum: 10/302cd3920df00f178519693557c34949d64c8b3af7e2c12772b14f61547b947e4c761b4ca2319dbba5b0906207bb1b535cbfc7006d40d47fd823e277c2690a71
+  languageName: node
+  linkType: hard
+
+"pg-types@npm:2.2.0, pg-types@npm:^2.2.0":
+  version: 2.2.0
+  resolution: "pg-types@npm:2.2.0"
+  dependencies:
+    pg-int8: "npm:1.0.1"
+    postgres-array: "npm:~2.0.0"
+    postgres-bytea: "npm:~1.0.0"
+    postgres-date: "npm:~1.0.4"
+    postgres-interval: "npm:^1.1.0"
+  checksum: 10/87a84d4baa91378d3a3da6076c69685eb905d1087bf73525ae1ba84b291b9dd8738c6716b333d8eac6cec91bf087237adc3e9281727365e9cbab0d9d072778b1
+  languageName: node
+  linkType: hard
+
+"pg@npm:^8.20.0":
+  version: 8.20.0
+  resolution: "pg@npm:8.20.0"
+  dependencies:
+    pg-cloudflare: "npm:^1.3.0"
+    pg-connection-string: "npm:^2.12.0"
+    pg-pool: "npm:^3.13.0"
+    pg-protocol: "npm:^1.13.0"
+    pg-types: "npm:2.2.0"
+    pgpass: "npm:1.0.5"
+  peerDependencies:
+    pg-native: ">=3.0.1"
+  dependenciesMeta:
+    pg-cloudflare:
+      optional: true
+  peerDependenciesMeta:
+    pg-native:
+      optional: true
+  checksum: 10/a30b99c799eddbd4f7f98bef906fe25e17c17d7d8918bc7545108947388df0d9c490858b04dabd37ce0063f40b1e58987b0079f99d5a661fb66f40c17f172bfc
+  languageName: node
+  linkType: hard
+
+"pgpass@npm:1.0.5":
+  version: 1.0.5
+  resolution: "pgpass@npm:1.0.5"
+  dependencies:
+    split2: "npm:^4.1.0"
+  checksum: 10/0a6f3bf76e36bdb3c20a7e8033140c732767bba7e81f845f7489fc3123a2bd6e3b8e704f08cba86b117435414b5d2422e20ba9d5f2efb6f0c75c9efca73e8e87
+  languageName: node
+  linkType: hard
+
 "picocolors@npm:^1.0.0, picocolors@npm:^1.1.1":
   version: 1.1.1
   resolution: "picocolors@npm:1.1.1"
@@ -7566,6 +7703,36 @@ __metadata:
     picocolors: "npm:^1.1.1"
     source-map-js: "npm:^1.2.1"
   checksum: 10/9e4fbe97574091e9736d0e82a591e29aa100a0bf60276a926308f8c57249698935f35c5d2f4e80de778d0cbb8dcffab4f383d85fd50c5649aca421c3df729b86
+  languageName: node
+  linkType: hard
+
+"postgres-array@npm:~2.0.0":
+  version: 2.0.0
+  resolution: "postgres-array@npm:2.0.0"
+  checksum: 10/aff99e79714d1271fe942fec4ffa2007b755e7e7dc3d2feecae3f1ceecb86fd3637c8138037fc3d9e7ec369231eeb136843c0b25927bf1ce295245a40ef849b4
+  languageName: node
+  linkType: hard
+
+"postgres-bytea@npm:~1.0.0":
+  version: 1.0.1
+  resolution: "postgres-bytea@npm:1.0.1"
+  checksum: 10/fc5fa49f59ac1f0eba841db55bd6b6c2232d1575d1734311e2097a2d5fd8b58e1239cbd64eeaf0b6752268fe7d2819e002bf90b0afd333be9f2b9d157d2cd7e7
+  languageName: node
+  linkType: hard
+
+"postgres-date@npm:~1.0.4":
+  version: 1.0.7
+  resolution: "postgres-date@npm:1.0.7"
+  checksum: 10/571ef45bec4551bb5d608c31b79987d7a895141f7d6c7b82e936a52d23d97474c770c6143e5cf8936c1cdc8b0dfd95e79f8136bf56a90164182a60f242c19f2b
+  languageName: node
+  linkType: hard
+
+"postgres-interval@npm:^1.1.0":
+  version: 1.2.0
+  resolution: "postgres-interval@npm:1.2.0"
+  dependencies:
+    xtend: "npm:^4.0.0"
+  checksum: 10/746b71f93805ae33b03528e429dc624706d1f9b20ee81bf743263efb6a0cd79ae02a642a8a480dbc0f09547b4315ab7df6ce5ec0be77ed700bac42730f5c76b2
   languageName: node
   linkType: hard
 
@@ -8653,6 +8820,13 @@ __metadata:
   version: 3.0.22
   resolution: "spdx-license-ids@npm:3.0.22"
   checksum: 10/a2f214aaf74c21a0172232367ce785157cef45d78617ee4d12aa1246350af566968e28b511e2096b707611566ac3959b85d8bf2d53a65bc6b66580735d3e1965
+  languageName: node
+  linkType: hard
+
+"split2@npm:^4.1.0":
+  version: 4.2.0
+  resolution: "split2@npm:4.2.0"
+  checksum: 10/09bbefc11bcf03f044584c9764cd31a252d8e52cea29130950b26161287c11f519807c5e54bd9e5804c713b79c02cefe6a98f4688630993386be353e03f534ab
   languageName: node
   linkType: hard
 
@@ -9926,6 +10100,13 @@ __metadata:
     utf-8-validate:
       optional: true
   checksum: 10/725964438d752f0ab0de582cd48d6eeada58d1511c3f613485b5598a83680bedac6187c765b0fe082e2d8cc4341fc57707c813ae780feee82d0c5efe6a4c61b6
+  languageName: node
+  linkType: hard
+
+"xtend@npm:^4.0.0":
+  version: 4.0.2
+  resolution: "xtend@npm:4.0.2"
+  checksum: 10/ac5dfa738b21f6e7f0dd6e65e1b3155036d68104e67e5d5d1bde74892e327d7e5636a076f625599dc394330a731861e87343ff184b0047fef1360a7ec0a5a36a
   languageName: node
   linkType: hard
 

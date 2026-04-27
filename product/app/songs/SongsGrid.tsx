@@ -8,7 +8,7 @@ import styled from 'styled-components'
 
 import { PageContainer } from '../layout/PageContainer'
 
-const BACKEND_URL = 'http://localhost:4568'
+const BACKEND_URL = ''
 
 type SongSummary = {
   videoId: string
