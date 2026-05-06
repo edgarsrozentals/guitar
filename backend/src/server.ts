@@ -4,20 +4,20 @@ import path from 'path'
 import { promisify } from 'util'
 
 import { AssemblyAI } from 'assemblyai'
+import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
 
+import { closeDb } from './db'
 import { createLalalAIClient, LalalAIClient, StemType } from './lalalai'
 import { getUserApiKey } from './lib/apiKeys'
-import { isSupabaseConfigured } from './lib/supabase'
-import { optionalAuth } from './middleware/auth'
-import {
-  userSongsRouter,
-  userSongChordsRouter,
-  userSongStemsRouter,
-  userSongLyricsRouter,
-} from './routes'
+import { runMigrations } from './lib/migrate'
+import { bootstrapAdminIfEmpty } from './lib/userBootstrap'
+import { requireAuth, optionalAuth } from './middleware/auth'
+import adminRouter from './routes/admin'
+import authRouter from './routes/auth'
+import profileRouter from './routes/profile'
 
 // Load environment variables from root .env file
 dotenv.config({ path: path.join(__dirname, '..', '..', '.env') })
@@ -27,8 +27,16 @@ const execAsync = promisify(exec)
 const app = express()
 const PORT = 4568
 
-app.use(cors())
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:4567'
+
+app.use(
+  cors({
+    origin: FRONTEND_ORIGIN,
+    credentials: true,
+  }),
+)
 app.use(express.json({ limit: '5mb' }))
+app.use(cookieParser())
 
 // Directory to store extracted audio files
 const AUDIO_DIR = path.join(__dirname, '..', 'audio')
@@ -137,8 +145,12 @@ function saveSongsMetadata() {
 loadSongsMetadata()
 
 // Track extraction progress
-const extractionProgress: Map<string, { progress: number; status: string }> =
-  new Map()
+type ExtractionProgress = {
+  progress: number
+  status: string
+  error?: string
+}
+const extractionProgress: Map<string, ExtractionProgress> = new Map()
 
 // Track stem separation progress
 type StemProgress = {
@@ -222,14 +234,48 @@ type SongData = {
   analyzedWith: ChordLibrary[]
 }
 
-// Get video info using yt-dlp
+class VideoMetadataError extends Error {
+  constructor(
+    message: string,
+    public stderr: string,
+  ) {
+    super(message)
+    this.name = 'VideoMetadataError'
+  }
+}
+
+function summarizeYtDlpStderr(stderr: string): string {
+  const lower = stderr.toLowerCase()
+  if (lower.includes('sign in to confirm') || lower.includes('not a bot')) {
+    return 'YouTube is blocking the server (bot check). The site admin needs to configure cookies.'
+  }
+  if (lower.includes('video unavailable')) return 'Video unavailable'
+  if (lower.includes('private video')) return 'This video is private'
+  if (lower.includes('age')) return 'Age-restricted video'
+  return 'Could not fetch video metadata'
+}
+
+const YT_DLP_COOKIES = process.env.YT_DLP_COOKIES || ''
+function ytDlpCookieArgs(): string[] {
+  if (!YT_DLP_COOKIES) return []
+  if (!fs.existsSync(YT_DLP_COOKIES)) {
+    console.warn(`[yt-dlp] cookies file not found at ${YT_DLP_COOKIES}`)
+    return []
+  }
+  return ['--cookies', YT_DLP_COOKIES]
+}
+function ytDlpCookieFlagShell(): string {
+  const args = ytDlpCookieArgs()
+  return args.length ? `--cookies "${args[1]}"` : ''
+}
+
 async function getVideoInfo(
   videoId: string,
 ): Promise<{ title: string; duration: number }> {
   const url = `https://www.youtube.com/watch?v=${videoId}`
   try {
     const { stdout } = await execAsync(
-      `yt-dlp --print "%(title)s|||%(duration)s" --no-download "${url}"`,
+      `yt-dlp ${ytDlpCookieFlagShell()} --print "%(title)s|||%(duration)s" --no-download "${url}"`,
       { timeout: 30000 },
     )
     const [title, durationStr] = stdout.trim().split('|||')
@@ -238,8 +284,13 @@ async function getVideoInfo(
       duration: parseFloat(durationStr) || 180,
     }
   } catch (error) {
-    console.error('Error getting video info:', error)
-    return { title: 'Unknown Title', duration: 180 }
+    const stderr =
+      error instanceof Error && 'stderr' in error
+        ? String((error as { stderr?: unknown }).stderr ?? '')
+        : ''
+    const summary = summarizeYtDlpStderr(stderr)
+    console.error(`Error getting video info: ${summary}`, stderr || error)
+    throw new VideoMetadataError(summary, stderr)
   }
 }
 
@@ -332,6 +383,7 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
     extractionProgress.set(videoId, { progress: 0, status: 'starting' })
 
     const ytdlp = spawn('yt-dlp', [
+      ...ytDlpCookieArgs(),
       '-x',
       '--audio-format',
       'mp3',
@@ -395,7 +447,7 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
         extractionProgress.set(videoId, {
           progress: 0,
           status: 'error',
-          error: `yt-dlp exited with code ${code}`,
+          error: summarizeYtDlpStderr(stderrOutput),
         })
         resolve(null)
       }
@@ -403,37 +455,63 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
 
     ytdlp.on('error', (error) => {
       console.error('yt-dlp error:', error)
-      extractionProgress.set(videoId, { progress: 0, status: 'error' })
+      extractionProgress.set(videoId, {
+        progress: 0,
+        status: 'error',
+        error: 'yt-dlp could not start',
+      })
       resolve(null)
     })
   })
 }
 
+async function runExtractionPipeline(videoId: string): Promise<void> {
+  const audioPath = await extractAudioWithProgress(videoId)
+  if (!audioPath) return
+
+  const cached = songCache.get(videoId)
+  if (!cached) return
+
+  cached.audioPath = audioPath
+  cached.audioUrl = `/audio/${videoId}.mp3`
+
+  extractionProgress.set(videoId, { progress: 100, status: 'analyzing' })
+  const analysis = await analyzeAudio(audioPath)
+
+  if (analysis) {
+    cached.chords = analysis.chords
+    cached.chordsByLibrary = { essentia: analysis.chords }
+    cached.key = analysis.key
+    cached.tempo = analysis.tempo
+    cached.analyzedWith = ['essentia']
+    console.log(`Updated ${videoId} with Essentia analysis`)
+    saveSongsMetadata()
+  }
+  extractionProgress.set(videoId, { progress: 100, status: 'complete' })
+}
+
 // API Routes
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    supabase: isSupabaseConfigured(),
-  })
+// Health check (unauthenticated)
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
 // ============================================
-// CLOUD STORAGE ROUTES (Supabase)
-// These routes require authentication and store data in Supabase
+// AUTH ROUTES (no auth required for login)
 // ============================================
 
-app.use('/api/user-songs', userSongsRouter)
-app.use('/api/user-songs', userSongChordsRouter)
-app.use('/api/user-songs', userSongStemsRouter)
-app.use('/api/user-songs', userSongLyricsRouter)
+app.use('/api/auth', authRouter)
 
-// ============================================
-// LEGACY LOCAL STORAGE ROUTES
-// These routes use local file storage (to be deprecated after migration)
-// ============================================
+// All routes below require authentication
+app.use('/api/profile', profileRouter)
+app.use('/api/admin', adminRouter)
+
+// Gate all /api/songs/* and /api/lyrics/* routes
+app.use('/api/songs', requireAuth)
+app.use('/api/lyrics', requireAuth)
+app.use('/api/chord-libraries', requireAuth)
+app.use('/api/stems', requireAuth)
 
 // List all processed songs
 app.get('/api/songs', (req, res) => {
@@ -527,34 +605,7 @@ app.post('/api/songs/process', async (req, res) => {
     console.log(`Video info: ${title}, ${duration}s`)
 
     // Start audio extraction (with progress tracking), then analyze audio
-    extractAudioWithProgress(videoId).then(async (audioPath) => {
-      if (audioPath) {
-        const cached = songCache.get(videoId)
-        if (cached) {
-          cached.audioPath = audioPath
-          cached.audioUrl = `/audio/${videoId}.mp3`
-
-          // Run full audio analysis (chords, key, tempo)
-          extractionProgress.set(videoId, {
-            progress: 100,
-            status: 'analyzing',
-          })
-          const analysis = await analyzeAudio(audioPath)
-
-          if (analysis) {
-            cached.chords = analysis.chords
-            cached.chordsByLibrary = { essentia: analysis.chords }
-            cached.key = analysis.key
-            cached.tempo = analysis.tempo
-            cached.analyzedWith = ['essentia']
-            console.log(`Updated ${videoId} with Essentia analysis`)
-            // Persist metadata
-            saveSongsMetadata()
-          }
-          extractionProgress.set(videoId, { progress: 100, status: 'complete' })
-        }
-      }
-    })
+    void runExtractionPipeline(videoId)
 
     const songData: SongData = {
       videoId,
@@ -574,6 +625,10 @@ app.post('/api/songs/process', async (req, res) => {
 
     res.json(songData)
   } catch (error) {
+    if (error instanceof VideoMetadataError) {
+      console.error(`Metadata fetch failed for ${videoId}: ${error.message}`)
+      return res.status(502).json({ error: error.message })
+    }
     console.error('Error processing video:', error)
     res.status(500).json({ error: 'Failed to process video' })
   }
@@ -625,6 +680,33 @@ app.get('/api/songs/:videoId/progress', (req, res) => {
   }
 
   res.json({ progress: 0, status: 'not_started', audioUrl: null })
+})
+
+// Retry extraction (used when initial extraction failed or never started)
+app.post('/api/songs/:videoId/extract', async (req, res) => {
+  const { videoId } = req.params
+  if (!songCache.has(videoId)) {
+    return res.status(404).json({ error: 'Song not found' })
+  }
+
+  const audioPath = path.join(AUDIO_DIR, `${videoId}.mp3`)
+  if (fs.existsSync(audioPath)) {
+    return res.json({ progress: 100, status: 'complete' })
+  }
+
+  const current = extractionProgress.get(videoId)
+  if (
+    current &&
+    current.status !== 'error' &&
+    current.status !== 'not_started' &&
+    current.status !== 'complete'
+  ) {
+    return res.json(current)
+  }
+
+  extractionProgress.set(videoId, { progress: 0, status: 'starting' })
+  void runExtractionPipeline(videoId)
+  res.json({ progress: 0, status: 'starting' })
 })
 
 // Server-Sent Events for progress streaming
@@ -1984,17 +2066,18 @@ async function generateLyrics(
   }
 }
 
-// Serve extracted audio files
-app.use('/audio', express.static(AUDIO_DIR))
+// Serve extracted audio files (auth-gated)
+app.use('/audio', requireAuth, express.static(AUDIO_DIR))
 
-// Serve separated stem files
-app.use('/stems', express.static(STEMS_DIR))
+// Serve separated stem files (auth-gated)
+app.use('/stems', requireAuth, express.static(STEMS_DIR))
 
-// Serve lyrics files
-app.use('/lyrics', express.static(LYRICS_DIR))
+// Serve lyrics files (auth-gated)
+app.use('/lyrics', requireAuth, express.static(LYRICS_DIR))
 
-// Only start the server if this file is run directly (not imported for testing)
-if (process.env.NODE_ENV !== 'test') {
+async function startServer(): Promise<void> {
+  await runMigrations()
+  await bootstrapAdminIfEmpty()
   app.listen(PORT, () => {
     console.log(`Backend server running at http://localhost:${PORT}`)
     console.log(`Audio files directory: ${AUDIO_DIR}`)
@@ -2006,6 +2089,13 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(
       `AssemblyAI API: ${ENV_ASSEMBLYAI_API_KEY ? 'Env key configured' : 'No env key (user keys supported via Profile)'}`,
     )
+  })
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  startServer().catch((error) => {
+    console.error('Failed to start server:', error)
+    closeDb().finally(() => process.exit(1))
   })
 }
 

@@ -1,66 +1,69 @@
-import { getSupabaseAdmin } from './supabase'
+import { getDb } from '../db'
 
-type ApiService = 'lalal_ai' | 'assemblyai'
+import { decryptSecret, encryptSecret } from './auth'
 
-type CacheEntry = {
-  key: string
-  fetchedAt: number
-}
+export type ApiKeyService = 'lalal_ai' | 'assemblyai'
 
-const CACHE_TTL_MS = 60_000 // 60 seconds
-const cache = new Map<string, CacheEntry>()
-
-function getCacheKey(userId: string, service: ApiService): string {
-  return `${userId}:${service}`
-}
-
-/**
- * Fetch a user's API key for a given service from Supabase.
- * Results are cached in memory for 60 seconds.
- * Returns null if not found or Supabase is unavailable.
- */
 export async function getUserApiKey(
   userId: string,
-  service: ApiService,
+  service: ApiKeyService,
 ): Promise<string | null> {
-  const key = getCacheKey(userId, service)
+  const row = await getDb()
+    .selectFrom('app_user_api_keys')
+    .select('api_key_encrypted')
+    .where('user_id', '=', userId)
+    .where('service', '=', service)
+    .executeTakeFirst()
 
-  // Check cache first
-  const cached = cache.get(key)
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-    return cached.key
-  }
-
-  const supabase = getSupabaseAdmin()
-  if (!supabase) return null
-
-  try {
-    const { data, error } = await supabase
-      .from('user_api_keys')
-      .select('api_key')
-      .eq('user_id', userId)
-      .eq('service', service)
-      .single()
-
-    if (error || !data) return null
-
-    const apiKey = (data as { api_key: string }).api_key
-
-    // Cache the result
-    cache.set(key, { key: apiKey, fetchedAt: Date.now() })
-
-    return apiKey
-  } catch {
-    return null
-  }
+  if (!row) return null
+  return decryptSecret(row.api_key_encrypted)
 }
 
-/**
- * Invalidate the cache for a specific user/service pair.
- */
-export function invalidateApiKeyCache(
+export async function setUserApiKey(
   userId: string,
-  service: ApiService,
-): void {
-  cache.delete(getCacheKey(userId, service))
+  service: ApiKeyService,
+  apiKey: string,
+): Promise<void> {
+  const encrypted = encryptSecret(apiKey)
+  await getDb()
+    .insertInto('app_user_api_keys')
+    .values({
+      user_id: userId,
+      service,
+      api_key_encrypted: encrypted,
+    })
+    .onConflict((oc) =>
+      oc.columns(['user_id', 'service']).doUpdateSet({
+        api_key_encrypted: encrypted,
+        updated_at: new Date(),
+      }),
+    )
+    .execute()
+}
+
+export async function deleteUserApiKey(
+  userId: string,
+  service: ApiKeyService,
+): Promise<void> {
+  await getDb()
+    .deleteFrom('app_user_api_keys')
+    .where('user_id', '=', userId)
+    .where('service', '=', service)
+    .execute()
+}
+
+export async function listUserApiKeyServices(
+  userId: string,
+): Promise<{ service: string; last4: string; updatedAt: Date }[]> {
+  const rows = await getDb()
+    .selectFrom('app_user_api_keys')
+    .select(['service', 'api_key_encrypted', 'updated_at'])
+    .where('user_id', '=', userId)
+    .execute()
+
+  return rows.map((r) => {
+    const decrypted = decryptSecret(r.api_key_encrypted) || ''
+    const last4 = decrypted.length >= 4 ? decrypted.slice(-4) : decrypted
+    return { service: r.service, last4, updatedAt: r.updated_at }
+  })
 }

@@ -1,0 +1,23 @@
+# Append this block into /etc/caddy/Caddyfile on VPS2.
+# Frontend static files served from /var/www/guitar-app (rsync'd from local `out/`).
+# All API + media paths reverse-proxy to the backend container on 127.0.0.1:18568.
+
+guitar.ideajetlab.com {
+    encode zstd gzip
+
+    @backend path /api/* /audio/* /stems/* /lyrics/*
+    handle @backend {
+        reverse_proxy 127.0.0.1:18568
+    }
+
+    handle {
+        root * /var/www/guitar-app
+        try_files {path} {path}.html /index.html
+        file_server
+    }
+
+    log {
+        output file /var/log/caddy/guitar-app.log
+        format json
+    }
+}

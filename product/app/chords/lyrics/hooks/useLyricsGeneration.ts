@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { AudioSource, LyricsState } from '../types'
 
-const BACKEND_URL = 'http://localhost:4568'
+const BACKEND_URL = ''
 
 type UseLyricsGenerationInput = {
   videoId: string | null

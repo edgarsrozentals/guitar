@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: guitar-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: guitar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: guitar
+    volumes:
+      - guitar_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U guitar -d guitar']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - guitar_internal
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: guitar-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4568
+      DATABASE_URL: postgresql://guitar:${POSTGRES_PASSWORD}@postgres:5432/guitar
+      JWT_SECRET: ${JWT_SECRET}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      MADMOM_SERVICE_URL: ${MADMOM_SERVICE_URL:-}
+      BTC_SERVICE_URL: ${BTC_SERVICE_URL:-}
+      YT_DLP_COOKIES: /app/backend/cookies.txt
+    volumes:
+      - ./backend/audio:/app/backend/audio
+      - ./backend/stems:/app/backend/stems
+      - ./backend/lyrics:/app/backend/lyrics
+      - ./backend/songs-metadata.json:/app/backend/songs-metadata.json
+      - ./backend/cookies.txt:/app/backend/cookies.txt:ro
+    ports:
+      - '127.0.0.1:18568:4568'
+    networks:
+      - guitar_internal
+
+volumes:
+  guitar_pg_data:
+
+networks:
+  guitar_internal:
+    driver: bridge

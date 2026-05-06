@@ -5,19 +5,23 @@ import styled from 'styled-components'
 
 import { useAuth } from '../state/auth/AuthProvider'
 
-import { UserAvatar } from './UserAvatar'
-
 const Container = styled.div`
   position: relative;
 `
 
-const AvatarButton = styled.button`
+const TriggerButton = styled.button`
   background: none;
-  border: none;
-  padding: 4px;
+  border: 1px solid ${getColor('mist')};
+  padding: 6px 12px;
   cursor: pointer;
-  border-radius: 50%;
+  border-radius: 999px;
+  color: ${getColor('text')};
+  font-size: 14px;
   transition: opacity 0.2s;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
   &:hover {
     opacity: 0.8;
@@ -31,7 +35,7 @@ const Dropdown = styled.div`
   background: ${getColor('foreground')};
   border: 1px solid ${getColor('mist')};
   border-radius: 8px;
-  min-width: 180px;
+  min-width: 200px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
   overflow: hidden;
@@ -77,20 +81,22 @@ const UserInfo = styled.div`
   border-bottom: 1px solid ${getColor('mist')};
 `
 
-const UserName = styled.div`
-  font-weight: 600;
-  font-size: 14px;
+const UserEmail = styled.div`
+  font-size: 13px;
   color: ${getColor('text')};
+  word-break: break-all;
 `
 
-const UserEmail = styled.div`
-  font-size: 12px;
+const AdminTag = styled.div`
+  font-size: 11px;
   color: ${getColor('textSupporting')};
   margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 `
 
 export const UserDropdown = () => {
-  const { user, profile, signOut } = useAuth()
+  const { user, signOut } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -118,30 +124,31 @@ export const UserDropdown = () => {
     } catch (e) {
       console.error('Sign out error:', e)
     }
-    window.location.href = '/'
+    window.location.href = '/login'
   }
 
   if (!user) return null
 
   return (
     <Container ref={containerRef}>
-      <AvatarButton onClick={() => setIsOpen(!isOpen)}>
-        <UserAvatar
-          avatarUrl={profile?.avatar_url ?? undefined}
-          displayName={profile?.display_name ?? user.email ?? 'User'}
-          size={32}
-        />
-      </AvatarButton>
+      <TriggerButton onClick={() => setIsOpen(!isOpen)}>
+        {user.email}
+      </TriggerButton>
 
       {isOpen && (
         <Dropdown>
           <UserInfo>
-            <UserName>{profile?.display_name || 'No name set'}</UserName>
             <UserEmail>{user.email}</UserEmail>
+            {user.isAdmin && <AdminTag>Admin</AdminTag>}
           </UserInfo>
           <DropdownLink href="/profile" onClick={() => setIsOpen(false)}>
             Profile
           </DropdownLink>
+          {user.isAdmin && (
+            <DropdownLink href="/admin/users" onClick={() => setIsOpen(false)}>
+              Admin: Users
+            </DropdownLink>
+          )}
           <Divider />
           <DropdownItem onClick={handleSignOut} disabled={isSigningOut}>
             {isSigningOut ? 'Signing out...' : 'Sign Out'}

@@ -1,14 +1,16 @@
 'use client'
 
 import { VStack } from '@lib/ui/css/stack'
+import { textInput } from '@lib/ui/css/textInput'
 import { getColor } from '@lib/ui/theme/getters'
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useState } from 'react'
 import styled from 'styled-components'
 
+import { parseYouTubeUrl } from '../chords/youtube/utils/parseYouTubeUrl'
 import { PageContainer } from '../layout/PageContainer'
 
-const BACKEND_URL = 'http://localhost:4568'
+const BACKEND_URL = ''
 
 type SongSummary = {
   videoId: string
@@ -301,6 +303,55 @@ const PageTitle = styled.h1`
   margin: 0;
 `
 
+const PageHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+`
+
+const AddButton = styled.button`
+  background: ${getColor('primary')};
+  color: ${getColor('background')};
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: filter 0.2s ease;
+
+  &:hover {
+    filter: brightness(1.1);
+  }
+`
+
+const UrlInput = styled.input`
+  ${textInput};
+  width: 100%;
+`
+
+const InlineError = styled.span`
+  color: ${getColor('alert')};
+  font-size: 13px;
+`
+
+const SubmitButton = styled.button<{ $disabled?: boolean }>`
+  background: ${({ $disabled }) =>
+    $disabled ? getColor('mist') : getColor('primary')};
+  color: ${({ $disabled }) =>
+    $disabled ? getColor('textSupporting') : getColor('background')};
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: ${({ $disabled }) => ($disabled ? 'not-allowed' : 'pointer')};
+`
+
 const KeyBadge = styled.span`
   font-size: 12px;
   padding: 2px 6px;
@@ -329,9 +380,32 @@ export const SongsGrid = () => {
   const { songs, loading, error, deleteSong } = useSongs()
   const [deleteTarget, setDeleteTarget] = useState<SongSummary | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isAddOpen, setIsAddOpen] = useState(false)
+  const [addUrl, setAddUrl] = useState('')
+  const [addError, setAddError] = useState<string | null>(null)
 
   const handleSongClick = (song: SongSummary) => {
     router.push(`/chords/a/minor?v=${song.videoId}`)
+  }
+
+  const openAdd = () => {
+    setAddUrl('')
+    setAddError(null)
+    setIsAddOpen(true)
+  }
+
+  const closeAdd = () => {
+    setIsAddOpen(false)
+  }
+
+  const submitAdd = () => {
+    const result = parseYouTubeUrl(addUrl)
+    if (!result.success) {
+      setAddError(result.error)
+      return
+    }
+    setIsAddOpen(false)
+    router.push(`/chords/a/minor?v=${result.videoId}`)
   }
 
   const handleDeleteClick = (e: React.MouseEvent, song: SongSummary) => {
@@ -350,11 +424,18 @@ export const SongsGrid = () => {
     }
   }
 
+  const header = (
+    <PageHeader>
+      <PageTitle>Songs</PageTitle>
+      <AddButton onClick={openAdd}>+ Add a song</AddButton>
+    </PageHeader>
+  )
+
   if (loading) {
     return (
       <PageContainer>
         <VStack gap={24}>
-          <PageTitle>Songs</PageTitle>
+          {header}
           <LoadingGrid>
             {Array.from({ length: 6 }).map((_, i) => (
               <LoadingSkeleton key={i} />
@@ -369,7 +450,7 @@ export const SongsGrid = () => {
     return (
       <PageContainer>
         <VStack gap={24}>
-          <PageTitle>Songs</PageTitle>
+          {header}
           <EmptyState>
             <EmptyTitle>Could not load songs</EmptyTitle>
             <EmptyDescription>
@@ -384,15 +465,15 @@ export const SongsGrid = () => {
   return (
     <PageContainer>
       <VStack gap={24}>
-        <PageTitle>Songs</PageTitle>
+        {header}
 
         {songs.length === 0 ? (
           <EmptyState>
             <EmptyIcon>&#127925;</EmptyIcon>
             <EmptyTitle>No songs yet</EmptyTitle>
             <EmptyDescription>
-              Go to the Chords page and paste a YouTube URL to analyze your
-              first song.
+              Click <strong>+ Add a song</strong> to paste a YouTube URL and
+              analyze your first song.
             </EmptyDescription>
           </EmptyState>
         ) : (
@@ -459,6 +540,49 @@ export const SongsGrid = () => {
           </Grid>
         )}
       </VStack>
+
+      {isAddOpen && (
+        <Overlay
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeAdd()
+          }}
+        >
+          <Dialog>
+            <DialogTitle>Add a song</DialogTitle>
+            <DialogMessage>
+              Paste a YouTube URL. We&rsquo;ll create a song and start audio
+              extraction + chord analysis.
+            </DialogMessage>
+            <VStack gap={8} style={{ marginTop: 16 }}>
+              <UrlInput
+                autoFocus
+                type="text"
+                placeholder="https://youtube.com/watch?v=..."
+                value={addUrl}
+                onChange={(e) => {
+                  setAddUrl(e.target.value)
+                  setAddError(null)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitAdd()
+                  if (e.key === 'Escape') closeAdd()
+                }}
+              />
+              {addError && <InlineError>{addError}</InlineError>}
+            </VStack>
+            <ButtonRow>
+              <Button onClick={closeAdd}>Cancel</Button>
+              <SubmitButton
+                onClick={submitAdd}
+                $disabled={!addUrl.trim()}
+                disabled={!addUrl.trim()}
+              >
+                Load
+              </SubmitButton>
+            </ButtonRow>
+          </Dialog>
+        </Overlay>
+      )}
 
       {deleteTarget && (
         <Overlay

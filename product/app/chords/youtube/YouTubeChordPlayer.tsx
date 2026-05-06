@@ -7,7 +7,6 @@ import { ChordQuality } from '@product/core/chords/chordTypes'
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import styled from 'styled-components'
 
-import { useAuth } from '../../state/auth/AuthProvider'
 import {
   useSongSettings,
   type StemType,
@@ -31,13 +30,11 @@ const CAGED_SHAPES: CAGEDShapeName[] = ['C', 'A', 'G', 'E', 'D']
 
 import { ChordComparison } from './ChordComparison'
 import { ChordTimeline } from './ChordTimeline'
-import { useSaveToLibrary } from './hooks'
 import { PLAYBACK_RATES } from './PlaybackControls'
-import { SaveToLibraryButton } from './SaveToLibraryButton'
 import { YouTubePlayer, type YouTubePlayerHandle } from './YouTubePlayer'
 import { YouTubeUrlInput } from './YouTubeUrlInput'
 
-const BACKEND_URL = 'http://localhost:4568'
+const BACKEND_URL = ''
 
 type ProcessingStatus = 'idle' | 'loading' | 'processing' | 'ready' | 'error'
 
@@ -170,6 +167,7 @@ type ExtractionProgress = {
   progress: number
   status: string
   audioUrl: string | null
+  error?: string
 }
 
 type StemInfo = {
@@ -837,6 +835,16 @@ const SeparateButton = styled.button`
     opacity: 0.5;
     cursor: not-allowed;
   }
+`
+
+const ExtractionErrorBanner = styled.div`
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid ${getColor('alert')};
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: ${getColor('text')};
+  line-height: 1.4;
 `
 
 const StemProgressBar = styled.div`
@@ -1868,16 +1876,8 @@ function getUrlVideoId(): string | null {
 export function YouTubeChordPlayer({
   onKeyDetected,
 }: YouTubeChordPlayerProps = {}) {
-  const { session } = useAuth()
-
-  // Helper to build auth headers for backend requests
-  const getAuthHeaders = useCallback((): Record<string, string> => {
-    const headers: Record<string, string> = {}
-    if (session?.access_token) {
-      headers['Authorization'] = `Bearer ${session.access_token}`
-    }
-    return headers
-  }, [session?.access_token])
+  // Cookie-based auth - browser sends cookie automatically, no headers needed
+  const getAuthHeaders = useCallback((): Record<string, string> => ({}), [])
 
   // Initialize videoId from URL on client
   const [videoId, setVideoId] = useState<string | null>(null)
@@ -1887,6 +1887,7 @@ export function YouTubeChordPlayer({
   const [currentTimeSeconds, setCurrentTimeSeconds] = useState(0)
   const [extractionProgress, setExtractionProgress] =
     useState<ExtractionProgress | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   // Song settings - persisted per user per song via Supabase
   const {
@@ -2027,24 +2028,6 @@ export function YouTubeChordPlayer({
       document.body.style.userSelect = ''
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
-
-  // Cloud library integration
-  const {
-    isAuthenticated,
-    isSaved,
-    canSave,
-    saveStatus,
-    error: saveError,
-    saveToLibrary,
-  } = useSaveToLibrary({
-    metadata: songData
-      ? {
-          videoId: songData.videoId,
-          title: songData.title,
-          durationSeconds: songData.duration,
-        }
-      : null,
-  })
 
   // Stem audio playback refs
   const stemAudioRefs = useRef<Record<string, HTMLAudioElement>>({})
@@ -2265,8 +2248,13 @@ export function YouTubeChordPlayer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoId: urlVideoId }),
       })
-        .then((response) => {
-          if (!response.ok) throw new Error('Failed to process video')
+        .then(async (response) => {
+          if (!response.ok) {
+            const body = (await response.json().catch(() => ({}))) as {
+              error?: string
+            }
+            throw new Error(body.error || 'Failed to process video')
+          }
           return response.json()
         })
         .then((data: SongData) => {
@@ -2290,8 +2278,9 @@ export function YouTubeChordPlayer({
           }
           startProgressPolling(urlVideoId)
         })
-        .catch((error) => {
+        .catch((error: Error) => {
           console.error('Error auto-loading video:', error)
+          setLoadError(error.message)
           setStatus('error')
         })
     }
@@ -2305,6 +2294,7 @@ export function YouTubeChordPlayer({
       setSongData(null)
       setCurrentChord(null)
       setExtractionProgress(null)
+      setLoadError(null)
       setActiveTab('audio')
       lastChordRef.current = null
 
@@ -2316,7 +2306,10 @@ export function YouTubeChordPlayer({
         })
 
         if (!response.ok) {
-          throw new Error('Failed to process video')
+          const body = (await response.json().catch(() => ({}))) as {
+            error?: string
+          }
+          throw new Error(body.error || 'Failed to process video')
         }
 
         const data: SongData = await response.json()
@@ -2344,6 +2337,9 @@ export function YouTubeChordPlayer({
         startProgressPolling(newVideoId)
       } catch (error) {
         console.error('Error processing video:', error)
+        setLoadError(
+          error instanceof Error ? error.message : 'Failed to process video',
+        )
         setStatus('error')
       }
     },
@@ -2376,8 +2372,39 @@ export function YouTubeChordPlayer({
     setExtractionProgress(null)
     setStemProgress(null)
     setLyricsState({ status: 'empty' })
+    setLoadError(null)
     lastChordRef.current = null
   }, [])
+
+  const handleRetryExtraction = useCallback(async () => {
+    if (!videoId) return
+    setExtractionProgress({
+      progress: 0,
+      status: 'starting',
+      audioUrl: null,
+    })
+    try {
+      const response = await fetch(
+        `${BACKEND_URL}/api/songs/${videoId}/extract`,
+        { method: 'POST' },
+      )
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string
+        }
+        throw new Error(body.error || 'Failed to start extraction')
+      }
+      startProgressPolling(videoId)
+    } catch (error) {
+      setExtractionProgress({
+        progress: 0,
+        status: 'error',
+        audioUrl: null,
+        error:
+          error instanceof Error ? error.message : 'Failed to start extraction',
+      })
+    }
+  }, [videoId, startProgressPolling])
 
   // Poll for stem separation progress
   const pollStemProgress = useCallback(async (vid: string) => {
@@ -3345,9 +3372,18 @@ export function YouTubeChordPlayer({
   )
 
   const isLoading = status === 'loading' || status === 'processing'
+  const extractionFailed = extractionProgress?.status === 'error'
   const showExtractionProgress =
-    extractionProgress && extractionProgress.status !== 'complete'
+    extractionProgress &&
+    extractionProgress.status !== 'complete' &&
+    !extractionFailed
   const audioUrl = extractionProgress?.audioUrl || songData?.audioUrl
+  const canRetryExtraction =
+    !!videoId &&
+    !audioUrl &&
+    (extractionFailed ||
+      !extractionProgress ||
+      extractionProgress.status === 'not_started')
 
   // Get tab status for showing ready/not-ready indicators
   const getTabStatus = useCallback(
@@ -3448,13 +3484,9 @@ export function YouTubeChordPlayer({
   const renderStemsContent = () => {
     // Inner content based on state
     const renderInnerContent = () => {
-      // No audio extracted yet
+      // Audio not yet extracted — keep stems column quiet (no placeholder)
       if (!audioUrl) {
-        return (
-          <TabPlaceholder>
-            Extract audio first to enable stem separation
-          </TabPlaceholder>
-        )
+        return null
       }
 
       // Stems already available
@@ -4330,8 +4362,23 @@ export function YouTubeChordPlayer({
               </ProgressContainer>
             )}
 
+            {/* Extraction failure */}
+            {extractionFailed && (
+              <ExtractionErrorBanner>
+                {extractionProgress?.error ||
+                  'Audio extraction failed. Try again.'}
+              </ExtractionErrorBanner>
+            )}
+
+            {/* Retry button when no audio yet and nothing in flight */}
+            {canRetryExtraction && (
+              <SeparateButton onClick={handleRetryExtraction}>
+                {extractionFailed ? 'Retry extraction' : 'Start extraction'}
+              </SeparateButton>
+            )}
+
             {/* Audio download link */}
-            {audioUrl ? (
+            {audioUrl && (
               <VStack gap={8}>
                 <DownloadLink
                   href={`${BACKEND_URL}${audioUrl}`}
@@ -4346,11 +4393,7 @@ export function YouTubeChordPlayer({
                   {audioUrl}
                 </TimeDisplay>
               </VStack>
-            ) : !showExtractionProgress ? (
-              <TabPlaceholder>
-                Audio will be available after extraction
-              </TabPlaceholder>
-            ) : null}
+            )}
           </VStack>
         )
       case 'fretboard':
@@ -4395,6 +4438,13 @@ export function YouTubeChordPlayer({
             </VideoInfo>
           )}
 
+          {/* Load failure (e.g. metadata fetch blocked by YouTube) */}
+          {videoId && !songData && status === 'error' && (
+            <ExtractionErrorBanner>
+              {loadError || 'Could not load this video.'}
+            </ExtractionErrorBanner>
+          )}
+
           {/* Video title row - full width */}
           {videoId && songData && (
             <VideoTitleRow>
@@ -4409,14 +4459,6 @@ export function YouTubeChordPlayer({
                 </svg>
               </YouTubeLink>
               <VideoTitle>{songData.title}</VideoTitle>
-              <SaveToLibraryButton
-                isAuthenticated={isAuthenticated}
-                isSaved={isSaved}
-                canSave={canSave}
-                isSaving={saveStatus === 'saving'}
-                error={saveError}
-                onSave={saveToLibrary}
-              />
               {audioUrl && (
                 <DownloadIconButton
                   href={`${BACKEND_URL}${audioUrl}`}
