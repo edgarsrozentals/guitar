@@ -145,8 +145,12 @@ function saveSongsMetadata() {
 loadSongsMetadata()
 
 // Track extraction progress
-const extractionProgress: Map<string, { progress: number; status: string }> =
-  new Map()
+type ExtractionProgress = {
+  progress: number
+  status: string
+  error?: string
+}
+const extractionProgress: Map<string, ExtractionProgress> = new Map()
 
 // Track stem separation progress
 type StemProgress = {
@@ -230,7 +234,27 @@ type SongData = {
   analyzedWith: ChordLibrary[]
 }
 
-// Get video info using yt-dlp
+class VideoMetadataError extends Error {
+  constructor(
+    message: string,
+    public stderr: string,
+  ) {
+    super(message)
+    this.name = 'VideoMetadataError'
+  }
+}
+
+function summarizeYtDlpStderr(stderr: string): string {
+  const lower = stderr.toLowerCase()
+  if (lower.includes('sign in to confirm') || lower.includes('not a bot')) {
+    return 'YouTube is blocking the server (bot check). The site admin needs to configure cookies.'
+  }
+  if (lower.includes('video unavailable')) return 'Video unavailable'
+  if (lower.includes('private video')) return 'This video is private'
+  if (lower.includes('age')) return 'Age-restricted video'
+  return 'Could not fetch video metadata'
+}
+
 async function getVideoInfo(
   videoId: string,
 ): Promise<{ title: string; duration: number }> {
@@ -246,8 +270,13 @@ async function getVideoInfo(
       duration: parseFloat(durationStr) || 180,
     }
   } catch (error) {
-    console.error('Error getting video info:', error)
-    return { title: 'Unknown Title', duration: 180 }
+    const stderr =
+      error instanceof Error && 'stderr' in error
+        ? String((error as { stderr?: unknown }).stderr ?? '')
+        : ''
+    const summary = summarizeYtDlpStderr(stderr)
+    console.error(`Error getting video info: ${summary}`, stderr || error)
+    throw new VideoMetadataError(summary, stderr)
   }
 }
 
@@ -403,7 +432,7 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
         extractionProgress.set(videoId, {
           progress: 0,
           status: 'error',
-          error: `yt-dlp exited with code ${code}`,
+          error: summarizeYtDlpStderr(stderrOutput),
         })
         resolve(null)
       }
@@ -411,10 +440,39 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
 
     ytdlp.on('error', (error) => {
       console.error('yt-dlp error:', error)
-      extractionProgress.set(videoId, { progress: 0, status: 'error' })
+      extractionProgress.set(videoId, {
+        progress: 0,
+        status: 'error',
+        error: 'yt-dlp could not start',
+      })
       resolve(null)
     })
   })
+}
+
+async function runExtractionPipeline(videoId: string): Promise<void> {
+  const audioPath = await extractAudioWithProgress(videoId)
+  if (!audioPath) return
+
+  const cached = songCache.get(videoId)
+  if (!cached) return
+
+  cached.audioPath = audioPath
+  cached.audioUrl = `/audio/${videoId}.mp3`
+
+  extractionProgress.set(videoId, { progress: 100, status: 'analyzing' })
+  const analysis = await analyzeAudio(audioPath)
+
+  if (analysis) {
+    cached.chords = analysis.chords
+    cached.chordsByLibrary = { essentia: analysis.chords }
+    cached.key = analysis.key
+    cached.tempo = analysis.tempo
+    cached.analyzedWith = ['essentia']
+    console.log(`Updated ${videoId} with Essentia analysis`)
+    saveSongsMetadata()
+  }
+  extractionProgress.set(videoId, { progress: 100, status: 'complete' })
 }
 
 // API Routes
@@ -532,34 +590,7 @@ app.post('/api/songs/process', async (req, res) => {
     console.log(`Video info: ${title}, ${duration}s`)
 
     // Start audio extraction (with progress tracking), then analyze audio
-    extractAudioWithProgress(videoId).then(async (audioPath) => {
-      if (audioPath) {
-        const cached = songCache.get(videoId)
-        if (cached) {
-          cached.audioPath = audioPath
-          cached.audioUrl = `/audio/${videoId}.mp3`
-
-          // Run full audio analysis (chords, key, tempo)
-          extractionProgress.set(videoId, {
-            progress: 100,
-            status: 'analyzing',
-          })
-          const analysis = await analyzeAudio(audioPath)
-
-          if (analysis) {
-            cached.chords = analysis.chords
-            cached.chordsByLibrary = { essentia: analysis.chords }
-            cached.key = analysis.key
-            cached.tempo = analysis.tempo
-            cached.analyzedWith = ['essentia']
-            console.log(`Updated ${videoId} with Essentia analysis`)
-            // Persist metadata
-            saveSongsMetadata()
-          }
-          extractionProgress.set(videoId, { progress: 100, status: 'complete' })
-        }
-      }
-    })
+    void runExtractionPipeline(videoId)
 
     const songData: SongData = {
       videoId,
@@ -579,6 +610,10 @@ app.post('/api/songs/process', async (req, res) => {
 
     res.json(songData)
   } catch (error) {
+    if (error instanceof VideoMetadataError) {
+      console.error(`Metadata fetch failed for ${videoId}: ${error.message}`)
+      return res.status(502).json({ error: error.message })
+    }
     console.error('Error processing video:', error)
     res.status(500).json({ error: 'Failed to process video' })
   }
@@ -630,6 +665,33 @@ app.get('/api/songs/:videoId/progress', (req, res) => {
   }
 
   res.json({ progress: 0, status: 'not_started', audioUrl: null })
+})
+
+// Retry extraction (used when initial extraction failed or never started)
+app.post('/api/songs/:videoId/extract', async (req, res) => {
+  const { videoId } = req.params
+  if (!songCache.has(videoId)) {
+    return res.status(404).json({ error: 'Song not found' })
+  }
+
+  const audioPath = path.join(AUDIO_DIR, `${videoId}.mp3`)
+  if (fs.existsSync(audioPath)) {
+    return res.json({ progress: 100, status: 'complete' })
+  }
+
+  const current = extractionProgress.get(videoId)
+  if (
+    current &&
+    current.status !== 'error' &&
+    current.status !== 'not_started' &&
+    current.status !== 'complete'
+  ) {
+    return res.json(current)
+  }
+
+  extractionProgress.set(videoId, { progress: 0, status: 'starting' })
+  void runExtractionPipeline(videoId)
+  res.json({ progress: 0, status: 'starting' })
 })
 
 // Server-Sent Events for progress streaming
