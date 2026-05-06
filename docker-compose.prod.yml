@@ -37,11 +37,13 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       MADMOM_SERVICE_URL: ${MADMOM_SERVICE_URL:-}
       BTC_SERVICE_URL: ${BTC_SERVICE_URL:-}
+      YT_DLP_COOKIES: /app/backend/cookies.txt
     volumes:
       - ./backend/audio:/app/backend/audio
       - ./backend/stems:/app/backend/stems
       - ./backend/lyrics:/app/backend/lyrics
       - ./backend/songs-metadata.json:/app/backend/songs-metadata.json
+      - ./backend/cookies.txt:/app/backend/cookies.txt:ro
     ports:
       - '127.0.0.1:18568:4568'
     networks:

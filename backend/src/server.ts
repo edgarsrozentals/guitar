@@ -255,13 +255,27 @@ function summarizeYtDlpStderr(stderr: string): string {
   return 'Could not fetch video metadata'
 }
 
+const YT_DLP_COOKIES = process.env.YT_DLP_COOKIES || ''
+function ytDlpCookieArgs(): string[] {
+  if (!YT_DLP_COOKIES) return []
+  if (!fs.existsSync(YT_DLP_COOKIES)) {
+    console.warn(`[yt-dlp] cookies file not found at ${YT_DLP_COOKIES}`)
+    return []
+  }
+  return ['--cookies', YT_DLP_COOKIES]
+}
+function ytDlpCookieFlagShell(): string {
+  const args = ytDlpCookieArgs()
+  return args.length ? `--cookies "${args[1]}"` : ''
+}
+
 async function getVideoInfo(
   videoId: string,
 ): Promise<{ title: string; duration: number }> {
   const url = `https://www.youtube.com/watch?v=${videoId}`
   try {
     const { stdout } = await execAsync(
-      `yt-dlp --print "%(title)s|||%(duration)s" --no-download "${url}"`,
+      `yt-dlp ${ytDlpCookieFlagShell()} --print "%(title)s|||%(duration)s" --no-download "${url}"`,
       { timeout: 30000 },
     )
     const [title, durationStr] = stdout.trim().split('|||')
@@ -369,6 +383,7 @@ function extractAudioWithProgress(videoId: string): Promise<string | null> {
     extractionProgress.set(videoId, { progress: 0, status: 'starting' })
 
     const ytdlp = spawn('yt-dlp', [
+      ...ytDlpCookieArgs(),
       '-x',
       '--audio-format',
       'mp3',
